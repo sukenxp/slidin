@@ -15694,6 +15694,59 @@ function Library:CreateWindow(WindowInfo)
     end)
 
     Library.Window = Window
+    if not Library.DiscordInviteNotified then
+        Library.DiscordInviteNotified = true
+        task.delay(3.5, function()
+            if Library.Unloaded then return end
+            Library:Notify({
+                Title = "join our discord!",
+                Description = "https://discord.gg/UJJH4bRDkp",
+                Time = 15,
+                Actions = {
+                    {
+                        Text = "Copy",
+                        Close = false,
+                        Callback = function(Context)
+                            local Success = false
+                            if type(setclipboard) == "function" then
+                                Success = pcall(setclipboard, "https://discord.gg/UJJH4bRDkp")
+                            end
+                            if Success then
+                                local State = Context.ActionState
+                                State.CopyFeedbackVersion = (State.CopyFeedbackVersion or 0) + 1
+                                local Version = State.CopyFeedbackVersion
+                                State.CopyButtonSizes = State.CopyButtonSizes or setmetatable({}, { __mode = "k" })
+                                for Button in State.Buttons do
+                                    if Button.Parent then
+                                        State.CopyButtonSizes[Button] = State.CopyButtonSizes[Button] or Button.Size
+                                        Button.Text = "copied to clipboard"
+                                        local Width = Library:GetTextBounds(Button.Text, Library.Scheme.Font, Button.TextSize, 240)
+                                        Button.Size = UDim2.new(0, Width + 18, Button.Size.Y.Scale, Button.Size.Y.Offset)
+                                    end
+                                end
+                                task.delay(2, function()
+                                    if Library.Unloaded or State.CopyFeedbackVersion ~= Version then return end
+                                    for Button, Size in State.CopyButtonSizes do
+                                        if Button.Parent then
+                                            Button.Text = "Copy"
+                                            Button.Size = Size
+                                        end
+                                    end
+                                    State.CopyButtonSizes = nil
+                                end)
+                            end
+                            Library:Notify({
+                                Title = "join our discord!",
+                                Description = Success and "copied to clipboard" or "Clipboard unavailable. Invite: https://discord.gg/UJJH4bRDkp",
+                                Time = 4,
+                                Status = Success and "normal" or "alert",
+                            })
+                        end,
+                    },
+                },
+            })
+        end)
+    end
     return Window
 end
 
