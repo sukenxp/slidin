@@ -191,17 +191,17 @@ local Library = {
     GlobalSearch = false,
     LastSearchTab = nil,
 
-    GradientStartColor = Color3.fromRGB(255, 255, 255),
-    GradientEndColor = Color3.fromRGB(238, 240, 243),
+    GradientStartColor = Color3.fromRGB(0, 84, 227),
+    GradientEndColor = Color3.fromRGB(61, 149, 255),
     AccentGradients = {},
     FixedGradients = {},
     DarkGradients = {},
     GradientCycleDuration = 4,
-    GradientDirection = "PingPong",
+    GradientDirection = "Static",
     GradientCycleStarted = os.clock(),
     GradientConnection = nil,
     MainMenuGradientEnabled = false,
-    MainMenuGradientMode = "Default",
+    MainMenuGradientMode = "No Gradient",
     MainMenuGradientStart = Color3.fromRGB(27, 28, 33),
     MainMenuGradientEnd = Color3.fromRGB(48, 50, 57),
     MainMenuGradientDirection = "Static",
@@ -213,8 +213,18 @@ local Library = {
     MainMenuGradientObject = nil,
     MainMenuBaseGradient = nil,
     MainMenuSurface = nil,
-    ActiveTheme = "Default",
+    ActiveTheme = "Windows XP",
     Themes = {
+        ["Windows XP"] = {
+            BackgroundColor = Color3.fromRGB(236, 233, 216),
+            MainColor = Color3.fromRGB(255, 254, 248),
+            AccentColor = Color3.fromRGB(0, 84, 227),
+            OutlineColor = Color3.fromRGB(127, 157, 185),
+            FontColor = Color3.fromRGB(24, 30, 42),
+            Font = Font.fromEnum(Enum.Font.Arial),
+            GradientStart = Color3.fromRGB(0, 84, 227),
+            GradientEnd = Color3.fromRGB(61, 149, 255),
+        },
         Default = {
             BackgroundColor = Color3.fromRGB(27, 28, 33),
             MainColor = Color3.fromRGB(40, 42, 48),
@@ -345,22 +355,22 @@ local Library = {
     OriginalMinSize = Vector2.new(480, 360),
     MinSize = Vector2.new(480, 360),
     DPIScale = 1,
-    CornerRadius = 12,
-    LiquidGlass = true,
+    CornerRadius = 4,
+    LiquidGlass = false,
     BlurEffect = nil,
-    BlurEnabled = true,
+    BlurEnabled = false,
     BlurSize = 20,
     HoverTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 
     --// Scheme \\--
-    IsLightTheme = false,
+    IsLightTheme = true,
     Scheme = {
-        BackgroundColor = Color3.fromRGB(30, 31, 36),
-        MainColor = Color3.fromRGB(38, 40, 46),
-        AccentColor = Color3.fromRGB(224, 226, 230),
-        OutlineColor = Color3.fromRGB(76, 79, 88),
-        FontColor = Color3.fromRGB(235, 237, 240),
-        Font = Font.fromEnum(Enum.Font.Code),
+        BackgroundColor = Color3.fromRGB(236, 233, 216),
+        MainColor = Color3.fromRGB(255, 254, 248),
+        AccentColor = Color3.fromRGB(0, 84, 227),
+        OutlineColor = Color3.fromRGB(127, 157, 185),
+        FontColor = Color3.fromRGB(24, 30, 42),
+        Font = Font.fromEnum(Enum.Font.Arial),
 
         RedColor = Color3.fromRGB(255, 50, 50),
         DestructiveColor = Color3.fromRGB(220, 38, 38),
@@ -469,7 +479,7 @@ local Templates = {
         NotifySide = "Right",
         ShowCustomCursor = true,
 
-        Font = Enum.Font.Code,
+        Font = Enum.Font.Arial,
         ToggleKeybind = Enum.KeyCode.F1,
 
         ShowMobileButtons = true,
@@ -1476,6 +1486,7 @@ local function StartGradientClock()
 
     Library.GradientCycleStarted = os.clock()
     Library.GradientConnection = RunService.RenderStepped:Connect(function()
+        if Library.GradientDirection == "Static" then return end
         local Duration = math.max(0.1, Library.GradientCycleDuration)
         local Phase = ((os.clock() - Library.GradientCycleStarted) % Duration) / Duration
         local HorizontalOffset
@@ -1651,6 +1662,11 @@ function Library:SetTheme(Name)
         end
     end
     Library.ActiveTheme = Name
+    local Background = Library.Scheme.BackgroundColor
+    Library.IsLightTheme = Background.R * 0.299 + Background.G * 0.587 + Background.B * 0.114 > 0.55
+    for _, Gradient in Library.DarkGradients do
+        Gradient.Color = ColorSequence.new(Library.Scheme.BackgroundColor, Library.Scheme.MainColor)
+    end
     Library:SetGradientColors(Theme.GradientStart, Theme.GradientEnd)
 
     for Instance, Properties in Library.Registry do
@@ -1687,6 +1703,13 @@ end
 function Library:SetGradientDirection(Direction)
     local Valid = { PingPong = true, Left = true, Right = true, Static = true }
     Library.GradientDirection = Valid[Direction] and Direction or "PingPong"
+    if Library.GradientDirection == "Static" then
+        for _, Collection in {Library.AccentGradients, Library.FixedGradients, Library.DarkGradients} do
+            for _, Gradient in Collection do
+                if Gradient.Parent then Gradient.Offset = Vector2.zero end
+            end
+        end
+    end
     Library.GradientCycleStarted = os.clock()
 end
 
@@ -1797,15 +1820,9 @@ local function AddDarkGradient(Obj)
         end
     end
     local Gradient = New("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(48, 50, 57)),
-            ColorSequenceKeypoint.new(0.25, Color3.fromRGB(37, 39, 45)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(55, 57, 64)),
-            ColorSequenceKeypoint.new(0.75, Color3.fromRGB(37, 39, 45)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(48, 50, 57)),
-        }),
-        Rotation = 115,
-        Offset = Vector2.new(-0.7, 0),
+        Color = ColorSequence.new(Library.Scheme.BackgroundColor, Library.Scheme.MainColor),
+        Rotation = 90,
+        Offset = Vector2.zero,
         Parent = Obj,
     })
     table.insert(Library.DarkGradients, Gradient)
@@ -5285,17 +5302,16 @@ do
             Parent = Holder,
         })
 
-        -- Use image arrows so a subsection clearly reads as an expandable row.
-        -- The two assets deliberately have distinct up/down silhouettes.
-        local UpArrowAsset = "rbxassetid://131509690078646"
-        local DownArrowAsset = "rbxassetid://140120818080157"
-        local Arrow = New("ImageLabel", {
+        --// subsection arrow
+        local Arrow = New("TextLabel", {
             AnchorPoint = Vector2.new(1, 0),
             BackgroundTransparency = 1,
             Position = UDim2.new(1, 0, 0, 2),
-            Image = Collapsible.Expanded and UpArrowAsset or DownArrowAsset,
-            ImageColor3 = Library.Scheme.FontColor,
-            ImageTransparency = Collapsible.Disabled and 0.8 or 0.25,
+            Text = Collapsible.Expanded and "^" or "v",
+            FontFace = Font.fromEnum(Enum.Font.ArialBold),
+            TextColor3 = "FontColor",
+            TextSize = 18,
+            TextTransparency = Collapsible.Disabled and 0.8 or 0,
             Size = UDim2.fromOffset(16, 16),
             Parent = Header,
         })
@@ -5405,16 +5421,16 @@ do
                 ArrowTween = nil
             end
 
-            Arrow.Image = Collapsible.Expanded and UpArrowAsset or DownArrowAsset
+            Arrow.Text = Collapsible.Expanded and "^" or "v"
             if Library.Animations and Library.Animations.Groupbox then
                 ArrowTween = TweenService:Create(
                     Arrow,
                     Library.GroupboxTweenInfo or TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                    { ImageTransparency = Collapsible.Disabled and 0.8 or 0.25, Size = UDim2.fromOffset(16, 16) }
+                    { TextTransparency = Collapsible.Disabled and 0.8 or 0, Size = UDim2.fromOffset(16, 16) }
                 )
                 ArrowTween:Play()
             else
-                Arrow.ImageTransparency = Collapsible.Disabled and 0.8 or 0.25
+                Arrow.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
             end
 
             Collapsible:Resize()
@@ -5443,7 +5459,7 @@ do
             Collapsible.Disabled = Disabled == true
             Header.Active = not Collapsible.Disabled
             Label.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
-            Arrow.ImageTransparency = Collapsible.Disabled and 0.8 or 0.25
+            Arrow.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
         end
 
         function Collapsible:SetVisible(Visible: boolean)
@@ -9921,7 +9937,7 @@ function Library:CreateWindow(WindowInfo)
     if typeof(WindowInfo.Font) == "EnumItem" then
         WindowInfo.Font = Font.fromEnum(WindowInfo.Font :: any)
     end
-    WindowInfo.CornerRadius = math.min(WindowInfo.CornerRadius, 2)
+    WindowInfo.CornerRadius = math.min(WindowInfo.CornerRadius, 4)
     
     --// Old Naming \\--
     if WindowInfo.Compact ~= nil then
@@ -10230,8 +10246,10 @@ function Library:CreateWindow(WindowInfo)
 
         --// Top Bar \\-
         TopBar = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(21, 22, 26),
-            BackgroundTransparency = 0.18,
+            BackgroundColor3 = function()
+                return Library.ActiveTheme == "Windows XP" and Library.Scheme.AccentColor or Library.Scheme.BackgroundColor
+            end,
+            BackgroundTransparency = 0,
             Size = UDim2.new(1, 0, 0, 48),
             Parent = MainFrame,
         })
@@ -10239,6 +10257,11 @@ function Library:CreateWindow(WindowInfo)
             CornerRadius = UDim.new(0, WindowInfo.CornerRadius),
             Parent = TopBar,
         }))
+        New("UIGradient", {
+            Color = ColorSequence.new(Color3.fromRGB(150, 200, 255), Color3.new(1, 1, 1)),
+            Rotation = 90,
+            Parent = TopBar,
+        })
         Library:MakeDraggable(MainFrame, TopBar, false, true)
 
         --// Title \\--
@@ -10301,11 +10324,14 @@ function Library:CreateWindow(WindowInfo)
             BackgroundTransparency = 1,
             Size = UDim2.new(0, X, 1, 0),
             Text = WindowInfo.Title,
+            TextColor3 = function()
+                return Library.ActiveTheme == "Windows XP" and Library.Scheme.WhiteColor or Library.Scheme.FontColor
+            end,
             TextSize = 20,
             LayoutOrder = 2,
             Parent = TitleHolder,
         })
-        AddAccentGradient(WindowTitle)
+        --// XP title stays legible against the blue caption bar.
 
         --// Top Right Bar \\--
         RightWrapper = New("Frame", {
@@ -10640,10 +10666,12 @@ function Library:CreateWindow(WindowInfo)
             AnchorPoint = Vector2.new(0.5, 0.5),
             BackgroundTransparency = 1,
             Image = "rbxassetid://131509690078646",
-            ImageColor3 = "FontColor",
-            ImageTransparency = 0.1,
+            ImageColor3 = Color3.new(1, 1, 1),
+            ImageTransparency = 0.02,
             Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(14, 14),
+            ScaleType = Enum.ScaleType.Fit,
+            Size = UDim2.fromOffset(18, 18),
+            ZIndex = 4,
             Parent = SidebarPrevious,
         })
         SidebarNext = New("TextButton", {
@@ -10659,10 +10687,12 @@ function Library:CreateWindow(WindowInfo)
             AnchorPoint = Vector2.new(0.5, 0.5),
             BackgroundTransparency = 1,
             Image = "rbxassetid://140120818080157",
-            ImageColor3 = "FontColor",
-            ImageTransparency = 0.1,
+            ImageColor3 = Color3.new(1, 1, 1),
+            ImageTransparency = 0.02,
             Position = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(14, 14),
+            ScaleType = Enum.ScaleType.Fit,
+            Size = UDim2.fromOffset(18, 18),
+            ZIndex = 4,
             Parent = SidebarNext,
         })
         New("Frame", {
@@ -10697,7 +10727,7 @@ function Library:CreateWindow(WindowInfo)
             Parent = Tabs,
         })
         TabIndicator = New("Frame", {
-            BackgroundColor3 = Color3.fromRGB(225, 227, 231),
+            BackgroundColor3 = "AccentColor",
             BackgroundTransparency = 0.72,
             Position = UDim2.fromOffset(8, 95),
             Size = UDim2.fromOffset(174, 38),
@@ -10733,7 +10763,7 @@ function Library:CreateWindow(WindowInfo)
         Library.WindowContainer = Container
 
         SearchOverlay = New("CanvasGroup", {
-            BackgroundColor3 = Color3.fromRGB(24, 25, 30),
+            BackgroundColor3 = "BackgroundColor",
             BackgroundTransparency = 0.06,
             GroupTransparency = 1,
             Position = UDim2.fromOffset(0, 57),
@@ -11151,12 +11181,14 @@ function Library:CreateWindow(WindowInfo)
         for Index, Dot in SidebarSectionDots do
             local Active = Index == SidebarSection
             TweenService:Create(Dot, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                BackgroundColor3 = Active and Color3.fromRGB(168, 255, 184) or Library.Scheme.OutlineColor,
+                BackgroundColor3 = Active and Library.Scheme.AccentColor or Library.Scheme.OutlineColor,
                 BackgroundTransparency = Active and 0 or 0.5,
                 Size = UDim2.fromOffset(Active and 7 or 5, Active and 7 or 5),
             }):Play()
         end
-        local ArrowTransparency = SectionCount > 1 and 0.1 or 0.65
+        -- Keep the controls readable even with one section; they describe the
+        -- direction and become fully functional once another section exists.
+        local ArrowTransparency = SectionCount > 1 and 0.02 or 0.38
         if SidebarPreviousIcon then SidebarPreviousIcon.ImageTransparency = ArrowTransparency end
         if SidebarNextIcon then SidebarNextIcon.ImageTransparency = ArrowTransparency end
         Tabs.CanvasPosition = Vector2.zero
@@ -11641,7 +11673,7 @@ function Library:CreateWindow(WindowInfo)
 
             do
                 TabboxHolder = New("Frame", {
-                    BackgroundColor3 = Color3.fromRGB(21, 22, 26),
+                    BackgroundColor3 = "MainColor",
                     Size = UDim2.fromScale(1, 0),
                     Parent = BoxHolder,
                 })
@@ -11993,7 +12025,7 @@ function Library:CreateWindow(WindowInfo)
 
             do
                 GroupboxHolder = New("Frame", {
-                    BackgroundColor3 = Color3.fromRGB(21, 22, 26),
+                    BackgroundColor3 = "MainColor",
                     BackgroundTransparency = Library.LiquidGlass and 0.12 or 0,
                     ClipsDescendants = true,
                     Size = UDim2.fromScale(1, 0),
@@ -12045,13 +12077,13 @@ function Library:CreateWindow(WindowInfo)
                 })
 
                 if Info.DisableCollapsing ~= true then
-                    GroupboxCollapseArrow = New("ImageButton", {
-                        Image = ArrowIcon and ArrowIcon.Url or "",
-                        ImageColor3 = "WhiteColor",
-                        ImageRectOffset = ArrowIcon and ArrowIcon.ImageRectOffset or Vector2.zero,
-                        ImageRectSize = ArrowIcon and ArrowIcon.ImageRectSize or Vector2.zero,
+                    GroupboxCollapseArrow = New("TextButton", {
+                        Text = "^",
+                        FontFace = Font.fromEnum(Enum.Font.ArialBold),
+                        TextSize = 20,
+                        TextColor3 = "FontColor",
                         BackgroundTransparency = 1,
-                        Rotation = 180,
+                        Rotation = 0,
                         Position = UDim2.new(1, -(22 + 6), 0, 6),
                         Size = UDim2.fromOffset(22, 22),
                         Parent = GroupboxHolder,
@@ -12154,7 +12186,7 @@ function Library:CreateWindow(WindowInfo)
                     CollapseArrowTween = nil
                 end
 
-                local TargetRotation = if Collapsed then 0 else 180
+                local TargetRotation = if Collapsed then 180 else 0
 
                 GroupboxContainer.Visible = not Collapsed
                 if Library.Animations and Library.Animations.Groupbox then
@@ -13858,7 +13890,7 @@ function Library:CreateWindow(WindowInfo)
         FirstSearchTarget = Results[1] and Results[1].Target or nil
         for Index, Result in ipairs(Results) do
             local Item = New("TextButton", {
-                BackgroundColor3 = Color3.fromRGB(29, 30, 35),
+                BackgroundColor3 = "MainColor",
                 BackgroundTransparency = 1,
                 Text = "",
                 ZIndex = 9,
@@ -15009,6 +15041,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         local function StopSpectating()
+            if not Spectated then return end
             Spectated = nil
             if SpectateConnection then SpectateConnection:Disconnect(); SpectateConnection = nil end
             if SpectateCharacterConnection then SpectateCharacterConnection:Disconnect(); SpectateCharacterConnection = nil end
@@ -15263,6 +15296,7 @@ function Library:CreateWindow(WindowInfo)
         SetSideOpen(true)
 
         local function StopSpectating()
+            if not Spectated then return end
             Spectated = nil
             if SpectateConnection then SpectateConnection:Disconnect(); SpectateConnection = nil end
             if SpectateCharacterConnection then SpectateCharacterConnection:Disconnect(); SpectateCharacterConnection = nil end
