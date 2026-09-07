@@ -10653,18 +10653,8 @@ function Library:CreateWindow(WindowInfo)
             Text = "",
             Parent = SidebarTabsHeader,
         })
-        SidebarPreviousIcon = New("ImageLabel", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundTransparency = 1,
-            Image = "rbxassetid://131509690078646",
-            ImageColor3 = Color3.new(1, 1, 1),
-            ImageTransparency = 0.02,
-            Position = UDim2.fromScale(0.5, 0.5),
-            ScaleType = Enum.ScaleType.Fit,
-            Size = UDim2.fromOffset(18, 18),
-            ZIndex = 4,
-            Parent = SidebarPrevious,
-        })
+        SidebarPreviousIcon = NewChevron(SidebarPrevious, UDim2.fromScale(0.5, 0.5), true)
+        SidebarPreviousIcon.AnchorPoint = Vector2.new(0.5, 0.5)
         SidebarNext = New("TextButton", {
             AnchorPoint = Vector2.new(1, 0),
             AutoButtonColor = false,
@@ -10674,18 +10664,8 @@ function Library:CreateWindow(WindowInfo)
             Text = "",
             Parent = SidebarTabsHeader,
         })
-        SidebarNextIcon = New("ImageLabel", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            BackgroundTransparency = 1,
-            Image = "rbxassetid://140120818080157",
-            ImageColor3 = Color3.new(1, 1, 1),
-            ImageTransparency = 0.02,
-            Position = UDim2.fromScale(0.5, 0.5),
-            ScaleType = Enum.ScaleType.Fit,
-            Size = UDim2.fromOffset(18, 18),
-            ZIndex = 4,
-            Parent = SidebarNext,
-        })
+        SidebarNextIcon = NewChevron(SidebarNext, UDim2.fromScale(0.5, 0.5), false)
+        SidebarNextIcon.AnchorPoint = Vector2.new(0.5, 0.5)
         New("Frame", {
             BackgroundColor3 = "OutlineColor",
             BackgroundTransparency = 0.12,
@@ -11180,8 +11160,11 @@ function Library:CreateWindow(WindowInfo)
         -- Keep the controls readable even with one section; they describe the
         -- direction and become fully functional once another section exists.
         local ArrowTransparency = SectionCount > 1 and 0.02 or 0.38
-        if SidebarPreviousIcon then SidebarPreviousIcon.ImageTransparency = ArrowTransparency end
-        if SidebarNextIcon then SidebarNextIcon.ImageTransparency = ArrowTransparency end
+        for _, Arrow in {SidebarPreviousIcon, SidebarNextIcon} do
+            if Arrow then
+                for _, Line in Arrow:GetChildren() do Line.BackgroundTransparency = ArrowTransparency end
+            end
+        end
         Tabs.CanvasPosition = Vector2.zero
 
         if SelectFirst and OrderedTabs[FirstIndex] and OrderedTabs[FirstIndex].Tab ~= Library.ActiveTab then
@@ -11680,8 +11663,15 @@ function Library:CreateWindow(WindowInfo)
                 AddAccentGradient(TabboxOutline, 0, NumberSequence.new(0.72))
                 AddHover(TabboxHolder, TabboxHolder, 1.008)
 
-                TabboxButtons = New("Frame", {
+                TabboxButtons = New("ScrollingFrame", {
                     BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    AutomaticCanvasSize = Enum.AutomaticSize.X,
+                    CanvasSize = UDim2.fromOffset(0, 0),
+                    ScrollingDirection = Enum.ScrollingDirection.X,
+                    ScrollBarThickness = 3,
+                    ScrollBarImageColor3 = "AccentColor",
+                    ClipsDescendants = true,
                     Size = UDim2.new(1, 0, 0, 34),
                     Parent = TabboxHolder,
                 })
@@ -11728,12 +11718,10 @@ function Library:CreateWindow(WindowInfo)
                 local Button = New("TextButton", {
                     BackgroundColor3 = "MainColor",
                     BackgroundTransparency = 1,
-                    Size = UDim2.fromOffset(math.max(80, #tostring(Name or "") * 8 + 44), 34),
+                    Size = UDim2.fromOffset(math.max(52, Library:GetTextBounds(tostring(Name or ""), Library.Scheme.Font, 13) + (IconName and 46 or 22)), 34),
                     Text = "",
                     Parent = TabboxButtons,
                 })
-
-                local TabChevron = NewChevron(Button, UDim2.new(1, -7, 0.5, 0), false)
 
                 local ButtonCorner = New("UICorner", {
                     TopLeftRadius = UDim.new(0, 2),
@@ -11747,7 +11735,7 @@ function Library:CreateWindow(WindowInfo)
                     AnchorPoint = Vector2.new(0.5, 0.5),
                     AutomaticSize = Enum.AutomaticSize.X,
                     BackgroundTransparency = 1,
-                    Position = UDim2.new(0.5, -10, 0.5, 0),
+                    Position = UDim2.fromScale(0.5, 0.5),
                     Size = UDim2.fromOffset(0, 16),
                     Parent = Button,
                 })
@@ -11798,7 +11786,8 @@ function Library:CreateWindow(WindowInfo)
                 local Container = New("Frame", {
                     BackgroundTransparency = 1,
                     Position = UDim2.fromOffset(0, 35),
-                    Size = UDim2.new(1, 0, 1, -35),
+                    AutomaticSize = Enum.AutomaticSize.Y,
+                    Size = UDim2.new(1, 0, 0, 0),
                     Visible = false,
                     Parent = TabboxHolder,
                 })
@@ -11828,7 +11817,6 @@ function Library:CreateWindow(WindowInfo)
                 }
 
                 function Tab:Show()
-                    Tab.Collapsed = false
                     -- Context/color menus belong to the tab that opened them.
                     -- Close them before moving between subtabs so they never
                     -- appear to follow the newly selected tab.
@@ -11854,12 +11842,19 @@ function Library:CreateWindow(WindowInfo)
                     Container.Position = UDim2.fromOffset(0, 35)
 
                     Tabbox.ActiveTab = Tab
-                    TabChevron.Rotation = 180
                     Tab:Resize()
+                    task.defer(function()
+                        if Tab.Destroyed or Tabbox.ActiveTab ~= Tab then return end
+                        local Left = Button.AbsolutePosition.X - TabboxButtons.AbsolutePosition.X + TabboxButtons.CanvasPosition.X
+                        local Width = TabboxButtons.AbsoluteWindowSize.X
+                        local Current = TabboxButtons.CanvasPosition.X
+                        local Target = Left < Current and Left or math.max(Current, Left + Button.AbsoluteSize.X - Width)
+                        local Maximum = math.max(0, TabboxButtons.AbsoluteCanvasSize.X - Width)
+                        TabboxButtons.CanvasPosition = Vector2.new(math.clamp(Target, 0, Maximum), 0)
+                    end)
                 end
 
                 function Tab:Hide()
-                    TabChevron.Rotation = 0
                     Button.BackgroundTransparency = 1
 
                     if ButtonLabel then
@@ -11879,11 +11874,6 @@ function Library:CreateWindow(WindowInfo)
                         return
                     end
 
-                    if Tab.Collapsed then
-                        TabboxHolder.Size = UDim2.new(1, 0, 0, 34)
-                        if ParentObj.Type == "Groupbox" then ParentObj:Resize() end
-                        return
-                    end
                     local ContentHeight = List.AbsoluteContentSize.Y / Library.DPIScale
                     TabboxHolder.Size = UDim2.new(1, 0, 0, math.ceil(ContentHeight) + 61)
                     if ParentObj.Type == "Groupbox" then
@@ -11942,14 +11932,7 @@ function Library:CreateWindow(WindowInfo)
                     Tab:Show()
                 end
 
-                table.insert(Tab.Connections, Button.MouseButton1Click:Connect(function()
-                    if Tabbox.ActiveTab ~= Tab then Tab:Show(); return end
-                    Tab.Collapsed = not Tab.Collapsed
-                    Container.Visible = not Tab.Collapsed
-                    Line.Visible = not Tab.Collapsed
-                    TabChevron.Rotation = Tab.Collapsed and 0 or 180
-                    Tab:Resize()
-                end))
+                table.insert(Tab.Connections, Button.MouseButton1Click:Connect(function() Tab:Show() end))
 
                 setmetatable(Tab, BaseGroupbox)
 
