@@ -1290,9 +1290,9 @@ type IconModule = {
 }
 
 local FetchIcons, Icons = pcall(function()
-    return (loadstring(
+    return loadstring(
         game:HttpGet("https://raw.githubusercontent.com/deividcomsono/lucide-roblox-direct/refs/heads/main/source.lua")
-    ) :: () -> IconModule)()
+    )()
 end)
 
 function Library:GetIcon(IconName: string)
@@ -4220,7 +4220,7 @@ do
                     return UserInputService:IsMouseButtonPressed(SpecialKeys[Key])
                         and not UserInputService:GetFocusedTextBox()
                 else
-                    return UserInputService:IsKeyDown(Enum.KeyCode[Key] :: any) and not UserInputService:GetFocusedTextBox()
+                    return UserInputService:IsKeyDown(Enum.KeyCode[Key]) and not UserInputService:GetFocusedTextBox()
                 end
             else
                 return KeyPicker.Toggled
@@ -8290,7 +8290,7 @@ do
             Connections = {},
             Destroyed = false,
 
-            Object = ViewportObject :: PVInstance,
+            Object = ViewportObject,
             Camera = if not Info.Camera then Instance.new("Camera") else Info.Camera,
             Interactive = Info.Interactive,
             AutoFocus = Info.AutoFocus,
@@ -8320,7 +8320,7 @@ do
             local ModelSize = GetModelSize(Viewport.Object)
             local MaxExtent = math.max(ModelSize.X, ModelSize.Y, ModelSize.Z)
             local CameraDistance = MaxExtent * 2
-            local ModelPosition = (Viewport.Object :: PVInstance):GetPivot().Position
+            local ModelPosition = Viewport.Object:GetPivot().Position
 
             Viewport.Camera.CFrame = CFrame.new(ModelPosition + Vector3.new(0, MaxExtent / 2, CameraDistance), ModelPosition)
         end
@@ -8424,7 +8424,7 @@ do
                 local MouseDelta = input.Position - LastMousePos
                 LastMousePos = input.Position
 
-                local Position = (Viewport.Object :: PVInstance):GetPivot().Position
+                local Position = Viewport.Object:GetPivot().Position
                 local Camera = Viewport.Camera
 
                 local RotationY = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), -MouseDelta.X * 0.01)
@@ -8473,7 +8473,7 @@ do
             end
         end))
 
-        ;(Viewport.Object :: PVInstance).Parent = ViewportFrame
+        Viewport.Object.Parent = ViewportFrame
         if Viewport.AutoFocus then
             FocusCamera()
         end
@@ -8490,7 +8490,7 @@ do
             end
 
             Viewport.Object = Object
-            ;(Viewport.Object :: PVInstance).Parent = ViewportFrame
+            Viewport.Object.Parent = ViewportFrame
 
             Groupbox:Resize()
         end
@@ -9225,7 +9225,7 @@ do
         setmetatable(DepGroupbox, BaseGroupbox)
 
         table.insert(Tab.DependencyGroupboxes, DepGroupbox)
-        table.insert(Library.DependencyBoxes, DepGroupbox :: any)
+        table.insert(Library.DependencyBoxes, DepGroupbox)
 
         function DepGroupbox:Destroy()
             DepGroupbox.Destroyed = true
@@ -9274,7 +9274,7 @@ end
 
 function Library:SetFont(FontFace)
     if typeof(FontFace) == "EnumItem" then
-        FontFace = Font.fromEnum(FontFace :: any)
+        FontFace = Font.fromEnum(FontFace)
     end
 
     Library.Scheme.Font = FontFace
@@ -10019,7 +10019,7 @@ function Library:CreateWindow(WindowInfo)
         math.clamp(WindowInfo.Size.Y.Offset, Library.MinSize.Y, MaxY)
     )
     if typeof(WindowInfo.Font) == "EnumItem" then
-        WindowInfo.Font = Font.fromEnum(WindowInfo.Font :: any)
+        WindowInfo.Font = Font.fromEnum(WindowInfo.Font)
     end
     WindowInfo.CornerRadius = math.min(WindowInfo.CornerRadius, 4)
     
@@ -14222,13 +14222,25 @@ function Library:CreateWindow(WindowInfo)
             UsernameLabel:SetText("User: " .. LocalPlayer.Name .. " (@" .. LocalPlayer.DisplayName .. ")")
             GameLabel:SetText("Current Game: " .. tostring(GameName))
             ExecutorLabel:SetText("Executor: " .. DetectExecutor())
-            local Hwid = DetectHwid()
+            local Linked = type(LP_SCRIPT_ID) == "string" and LP_SCRIPT_ID ~= ""
+            local Hwid = Linked and type(LP_FINGERPRINT) == "string" and LP_FINGERPRINT or DetectHwid()
             local Digits = Hwid:gsub("%D", ""):sub(1, 2)
             HwidLabel:SetText("HWID: " .. (Digits ~= "" and Digits or "--") .. "***")
-            RankLabel:SetText("Rank: Not linked")
-            KeyLabel:SetText("Key / Whitelist: Not linked")
-            PlanLabel:SetText("Plan: None")
-            ExpiryLabel:SetText("Time Remaining: N/A")
+            RankLabel:SetText("Rank: " .. (Linked and (LP_PREMIUM == true and "Premium" or "Standard") or "Not linked"))
+            KeyLabel:SetText("Key / Whitelist: " .. (Linked and "Authenticated" or "Not linked"))
+            PlanLabel:SetText("Plan: " .. (Linked and (LP_PREMIUM == true and "Premium" or "Ad / Free") or "None"))
+            local Remaining = Linked and tonumber(LP_TIMELEFT) or nil
+            local Expiry = "N/A"
+            if Remaining then
+                if Remaining == 0 then
+                    Expiry = "No expiry"
+                elseif Remaining > 0 then
+                    Expiry = string.format("%dd %dh %dm", math.floor(Remaining / 86400), math.floor(Remaining / 3600) % 24, math.floor(Remaining / 60) % 60)
+                else
+                    Expiry = "Expired"
+                end
+            end
+            ExpiryLabel:SetText("Time Remaining: " .. Expiry)
         end
 
         local function AnimateAvatar(From, To, Completed)
