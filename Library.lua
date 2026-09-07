@@ -273,6 +273,7 @@ local Library = {
     },
 
     --// Tabs \\--
+    DefaultTabIcons = {main = "house", vehicle = "car", visuals = "eye", misc = "wrench", settings = "settings", players = "users"},
     ActiveTab = nil,
     Tabs = {},
     TabButtons = {},
@@ -1467,6 +1468,25 @@ local function New(ClassName: string, Properties: { [string]: any }): any
     return Instance
 end
 
+--// asset-independent chevrons
+local function NewChevron(Parent, Position, Expanded)
+    local Chevron = New("Frame", {
+        Name = "Chevron", AnchorPoint = Vector2.new(1, 0.5),
+        BackgroundTransparency = 1, Size = UDim2.fromOffset(16, 16),
+        Position = Position, Rotation = Expanded and 180 or 0,
+        ZIndex = Parent.ZIndex + 2, Parent = Parent,
+    })
+    for Index, Rotation in {45, -45} do
+        New("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5), BorderSizePixel = 0,
+            BackgroundColor3 = "FontColor", Size = UDim2.fromOffset(8, 2),
+            Position = UDim2.fromOffset(Index == 1 and 5 or 10, 8),
+            Rotation = Rotation, ZIndex = Chevron.ZIndex, Parent = Chevron,
+        })
+    end
+    return Chevron
+end
+
 local function GetGlassSequence(Start, Finish)
     Start = Start or Library.GradientStartColor
     Finish = Finish or Library.GradientEndColor
@@ -2539,6 +2559,7 @@ function Library:AddDraggableLabel(...)
     assert(IconPosition == "left" or IconPosition == "right", "Icon Position needs to be either 'left' or 'right'.")
 
     local DraggableLabel = {
+        VisibleRequested = true,
         Connections = {},
         Destroyed = false
     }
@@ -2550,7 +2571,8 @@ function Library:AddDraggableLabel(...)
         BackgroundColor3 = "BackgroundColor",
         Size = UDim2.fromOffset(0, 0),
         Position = UDim2.fromOffset(6, 6),
-        Text = Text,
+        Text = Text or "",
+        Visible = type(Text) == "string" and Trim(Text) ~= "",
         TextSize = 12,
         ZIndex = 10,
         Parent = ScreenGui,
@@ -2579,6 +2601,7 @@ function Library:AddDraggableLabel(...)
 
     function DraggableLabel:SetText(Text: string)
         Label.Text = Text
+        Label.Visible = DraggableLabel.VisibleRequested and Trim(Text) ~= ""
     end
 
     function DraggableLabel:SetIcon(NewIcon: string)
@@ -2639,32 +2662,13 @@ function Library:AddDraggableLabel(...)
     end
 
     function DraggableLabel:SetVisible(Visible: boolean)
-        if Visible then
-            Label.Visible = true
-            Label.BackgroundTransparency = 1
-            Label.TextTransparency = 1
-            LabelScale.Scale = 0.92
-            TweenService:Create(Label, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                BackgroundTransparency = 0,
-                TextTransparency = 0,
-            }):Play()
-            TweenService:Create(LabelScale, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Scale = 1,
-            }):Play()
-        else
-            TweenService:Create(Label, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                BackgroundTransparency = 1,
-                TextTransparency = 1,
-            }):Play()
-            TweenService:Create(LabelScale, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                Scale = 0.94,
-            }):Play()
-            task.delay(0.25, function()
-                if Label.Parent then Label.Visible = false end
-            end)
-        end
+        DraggableLabel.VisibleRequested = Visible == true
+        Label.Visible = DraggableLabel.VisibleRequested and Trim(Label.Text) ~= ""
+        Label.BackgroundTransparency = 0
+        Label.TextTransparency = 0
+        LabelScale.Scale = Library.DPIScale
     end
-    
+
     DraggableLabel:SetIcon(Icon)
     DraggableLabel.Label = Label
 
@@ -5303,18 +5307,7 @@ do
         })
 
         --// subsection arrow
-        local Arrow = New("TextLabel", {
-            AnchorPoint = Vector2.new(1, 0),
-            BackgroundTransparency = 1,
-            Position = UDim2.new(1, 0, 0, 2),
-            Text = Collapsible.Expanded and "^" or "v",
-            FontFace = Font.fromEnum(Enum.Font.ArialBold),
-            TextColor3 = "FontColor",
-            TextSize = 18,
-            TextTransparency = Collapsible.Disabled and 0.8 or 0,
-            Size = UDim2.fromOffset(16, 16),
-            Parent = Header,
-        })
+        local Arrow = NewChevron(Header, UDim2.new(1, -3, 0.5, 0), Collapsible.Expanded)
 
         local Label = New("TextLabel", {
             BackgroundTransparency = 1,
@@ -5421,16 +5414,16 @@ do
                 ArrowTween = nil
             end
 
-            Arrow.Text = Collapsible.Expanded and "^" or "v"
+            local ArrowRotation = Collapsible.Expanded and 180 or 0
             if Library.Animations and Library.Animations.Groupbox then
                 ArrowTween = TweenService:Create(
                     Arrow,
                     Library.GroupboxTweenInfo or TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-                    { TextTransparency = Collapsible.Disabled and 0.8 or 0, Size = UDim2.fromOffset(16, 16) }
+                    { Rotation = ArrowRotation }
                 )
                 ArrowTween:Play()
             else
-                Arrow.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
+                Arrow.Rotation = ArrowRotation
             end
 
             Collapsible:Resize()
@@ -5459,7 +5452,7 @@ do
             Collapsible.Disabled = Disabled == true
             Header.Active = not Collapsible.Disabled
             Label.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
-            Arrow.TextTransparency = Collapsible.Disabled and 0.8 or 0.25
+            for _, Line in Arrow:GetChildren() do Line.BackgroundTransparency = Collapsible.Disabled and 0.6 or 0 end
         end
 
         function Collapsible:SetVisible(Visible: boolean)
@@ -9231,15 +9224,16 @@ function Library:SetBackgroundImage(Image: string | number)
 end
 
 function Library:UpdateNotificationPositions(Snap: boolean?)
-    local IsLeft = Library.NotifySide:lower() == "left"
+    local IsLeft = Library.NotifySide:lower():find("left", 1, true) ~= nil
     local XScale = IsLeft and 0 or 1
+    local IsTop = Library.NotifySide:lower():find("top", 1, true) ~= nil
     local RunningY = 0
 
     for _, FakeBackground in NotifyOrder do
         local Data = Library.Notifications[FakeBackground]
         if not (Data and FakeBackground.Parent) then continue end
 
-        local Target = UDim2.new(XScale, 0, 1, -RunningY)
+        local Target = UDim2.new(XScale, 0, IsTop and 0 or 1, IsTop and RunningY or -RunningY)
         if Snap or not Data.PositionInitialized then
             FakeBackground.Position = Target
             Data.PositionInitialized = true
@@ -9255,20 +9249,17 @@ function Library:UpdateNotificationPositions(Snap: boolean?)
 end
 
 function Library:SetNotifySide(Side: string)
+    local Aliases = {left = "Bottom Left", right = "Bottom Right"}
+    Side = Aliases[tostring(Side):lower()] or Side
+    if not table.find({"Top Left", "Top Right", "Bottom Left", "Bottom Right"}, Side) then return end
     Library.NotifySide = Side
-
-    local IsLeft = Side:lower() == "left"
-    if IsLeft then
-        NotificationArea.AnchorPoint = Vector2.new(0, 1)
-        NotificationArea.Position = UDim2.new(0, 18, 1, -18)
-    else
-        NotificationArea.AnchorPoint = Vector2.new(1, 1)
-        NotificationArea.Position = UDim2.new(1, -18, 1, -18)
-    end
-
+    local IsLeft = Side:find("Left", 1, true) ~= nil
+    local IsTop = Side:find("Top", 1, true) ~= nil
+    NotificationArea.AnchorPoint = Vector2.new(IsLeft and 0 or 1, IsTop and 0 or 1)
+    NotificationArea.Position = UDim2.new(IsLeft and 0 or 1, IsLeft and 18 or -18, IsTop and 0 or 1, IsTop and 18 or -18)
     for FakeBackground in Library.Notifications do
-        if not (FakeBackground and FakeBackground.Parent) then continue end
-        FakeBackground.AnchorPoint = if IsLeft then Vector2.new(0, 1) else Vector2.new(1, 1)
+        if not FakeBackground.Parent then continue end
+        FakeBackground.AnchorPoint = Vector2.new(IsLeft and 0 or 1, IsTop and 0 or 1)
     end
 
     Library:UpdateNotificationPositions(true)
@@ -9339,7 +9330,7 @@ function Library:Notify(...)
     end
 
     local FakeBackground = New("Frame", {
-        AnchorPoint = Library.NotifySide:lower() == "left" and Vector2.new(0, 1) or Vector2.new(1, 1),
+        AnchorPoint = Vector2.new(Library.NotifySide:find("Left") and 0 or 1, Library.NotifySide:find("Top") and 0 or 1),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 0),
@@ -9352,7 +9343,7 @@ function Library:Notify(...)
         BackgroundColor3 = "MainColor",
         BackgroundTransparency = Library.LiquidGlass and 0.12 or 0.04,
         GroupTransparency = 1,
-        Position = Library.NotifySide:lower() == "left" and UDim2.new(-1, -8, 0, -2) or UDim2.new(1, 8, 0, -2),
+        Position = Library.NotifySide:lower():find("left", 1, true) ~= nil and UDim2.new(-1, -8, 0, -2) or UDim2.new(1, 8, 0, -2),
         Size = UDim2.fromScale(1, 1),
         ZIndex = 5,
         Parent = FakeBackground,
@@ -9571,7 +9562,7 @@ function Library:Notify(...)
 
         TweenService
             :Create(Holder, Library.NotifyTweenInfo, {
-                Position = Library.NotifySide:lower() == "left" and UDim2.new(-1, -8, 0, -2) or UDim2.new(1, 8, 0, -2),
+                Position = Library.NotifySide:lower():find("left", 1, true) ~= nil and UDim2.new(-1, -8, 0, -2) or UDim2.new(1, 8, 0, -2),
                 GroupTransparency = 1,
             })
             :Play()
@@ -11250,6 +11241,7 @@ function Library:CreateWindow(WindowInfo)
         local TabLeft
         local TabRight
 
+        Icon = Icon or Library.DefaultTabIcons[tostring(Name):lower()]
         Icon = Icon and Library:GetCustomIcon(Icon) or nil
         do
             TabButton = New("TextButton", {
@@ -11736,10 +11728,12 @@ function Library:CreateWindow(WindowInfo)
                 local Button = New("TextButton", {
                     BackgroundColor3 = "MainColor",
                     BackgroundTransparency = 1,
-                    Size = UDim2.fromOffset(math.max(58, #tostring(Name or "") * 8 + 22), 34),
+                    Size = UDim2.fromOffset(math.max(80, #tostring(Name or "") * 8 + 44), 34),
                     Text = "",
                     Parent = TabboxButtons,
                 })
+
+                local TabChevron = NewChevron(Button, UDim2.new(1, -7, 0.5, 0), false)
 
                 local ButtonCorner = New("UICorner", {
                     TopLeftRadius = UDim.new(0, 2),
@@ -11753,7 +11747,7 @@ function Library:CreateWindow(WindowInfo)
                     AnchorPoint = Vector2.new(0.5, 0.5),
                     AutomaticSize = Enum.AutomaticSize.X,
                     BackgroundTransparency = 1,
-                    Position = UDim2.fromScale(0.5, 0.5),
+                    Position = UDim2.new(0.5, -10, 0.5, 0),
                     Size = UDim2.fromOffset(0, 16),
                     Parent = Button,
                 })
@@ -11834,6 +11828,7 @@ function Library:CreateWindow(WindowInfo)
                 }
 
                 function Tab:Show()
+                    Tab.Collapsed = false
                     -- Context/color menus belong to the tab that opened them.
                     -- Close them before moving between subtabs so they never
                     -- appear to follow the newly selected tab.
@@ -11859,10 +11854,12 @@ function Library:CreateWindow(WindowInfo)
                     Container.Position = UDim2.fromOffset(0, 35)
 
                     Tabbox.ActiveTab = Tab
+                    TabChevron.Rotation = 180
                     Tab:Resize()
                 end
 
                 function Tab:Hide()
+                    TabChevron.Rotation = 0
                     Button.BackgroundTransparency = 1
 
                     if ButtonLabel then
@@ -11882,6 +11879,11 @@ function Library:CreateWindow(WindowInfo)
                         return
                     end
 
+                    if Tab.Collapsed then
+                        TabboxHolder.Size = UDim2.new(1, 0, 0, 34)
+                        if ParentObj.Type == "Groupbox" then ParentObj:Resize() end
+                        return
+                    end
                     local ContentHeight = List.AbsoluteContentSize.Y / Library.DPIScale
                     TabboxHolder.Size = UDim2.new(1, 0, 0, math.ceil(ContentHeight) + 61)
                     if ParentObj.Type == "Groupbox" then
@@ -11940,7 +11942,14 @@ function Library:CreateWindow(WindowInfo)
                     Tab:Show()
                 end
 
-                Button.MouseButton1Click:Connect(Tab.Show)
+                table.insert(Tab.Connections, Button.MouseButton1Click:Connect(function()
+                    if Tabbox.ActiveTab ~= Tab then Tab:Show(); return end
+                    Tab.Collapsed = not Tab.Collapsed
+                    Container.Visible = not Tab.Collapsed
+                    Line.Visible = not Tab.Collapsed
+                    TabChevron.Rotation = Tab.Collapsed and 0 or 180
+                    Tab:Resize()
+                end))
 
                 setmetatable(Tab, BaseGroupbox)
 
@@ -14133,7 +14142,9 @@ function Library:CreateWindow(WindowInfo)
             UsernameLabel:SetText("User: " .. LocalPlayer.Name .. " (@" .. LocalPlayer.DisplayName .. ")")
             GameLabel:SetText("Current Game: " .. tostring(GameName))
             ExecutorLabel:SetText("Executor: " .. DetectExecutor())
-            HwidLabel:SetText("HWID: " .. DetectHwid())
+            local Hwid = DetectHwid()
+            local Digits = Hwid:gsub("%D", ""):sub(1, 2)
+            HwidLabel:SetText("HWID: " .. (Digits ~= "" and Digits or "--") .. "***")
             RankLabel:SetText("Rank: Not linked")
             KeyLabel:SetText("Key / Whitelist: Not linked")
             PlanLabel:SetText("Plan: None")
@@ -14297,102 +14308,90 @@ function Library:CreateWindow(WindowInfo)
             InterfaceBox.Tabs.Gradient = nil
         end
         local Themes = InterfaceBox:AddTab("Themes")
-        local StudioHolder, StudioContainer = Library:AddDraggableMenu("Advanced Theme Studio")
+        --// theme studio: fixed caption, category tabs, one scrollable page
+        local StudioHolder, StudioContainer = Library:AddDraggableMenu("Theme Studio")
         StudioHolder.AutomaticSize = Enum.AutomaticSize.None
-        StudioHolder.Size = UDim2.fromOffset(360, 480)
+        StudioHolder.Size = UDim2.fromOffset(390, 450)
         StudioHolder.Visible = false
         StudioHolder.GroupTransparency = 1
         StudioHolder.ZIndex = 50
         StudioContainer.ZIndex = 51
+        StudioContainer.Position = UDim2.fromOffset(0, 78)
+        StudioContainer.Size = UDim2.new(1, 0, 1, -78)
+        StudioContainer.ScrollBarThickness = 4
         local StudioScale = StudioHolder:FindFirstChildOfClass("UIScale")
-        local StudioList = StudioContainer:FindFirstChildOfClass("UIListLayout")
-        local StudioPadding = StudioContainer:FindFirstChildOfClass("UIPadding")
-        if StudioList then StudioList.Padding = UDim.new(0, 5) end
-        if StudioPadding then
-            StudioPadding.PaddingBottom = UDim.new(0, 6)
-            StudioPadding.PaddingLeft = UDim.new(0, 6)
-            StudioPadding.PaddingRight = UDim.new(0, 6)
-            StudioPadding.PaddingTop = UDim.new(0, 6)
-        end
         local StudioOpen = false
         local StudioPositioned = false
+        local StudioTween
         local StudioAnimationId = 0
 
         local function SetStudioVisible(Visible)
+            if StudioOpen == (Visible == true) then return end
             StudioOpen = Visible == true
             StudioAnimationId += 1
             local AnimationId = StudioAnimationId
-            local TargetScale = Library.DPIScale or 1
-
+            if StudioTween then StudioTween:Cancel() end
+            local Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(800, 600)
+            local Scale = Library.DPIScale or 1
+            StudioHolder.Size = UDim2.fromOffset(math.min(390, (Viewport.X - 32) / Scale), math.min(450, (Viewport.Y - 32) / Scale))
+            if StudioScale then StudioScale.Scale = Scale end
             if StudioOpen then
                 if not StudioPositioned then
-                    PositionDraggable(StudioHolder, UDim2.fromOffset(12, 12))
+                    PositionDraggable(StudioHolder, UDim2.fromOffset(24, 24))
                     StudioPositioned = true
                 end
                 StudioHolder.Visible = true
-                StudioHolder.GroupTransparency = 1
-                if StudioScale then StudioScale.Scale = TargetScale * 0.94 end
-                TweenService:Create(StudioHolder, TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    GroupTransparency = 0,
-                }):Play()
-                if StudioScale then
-                    TweenService:Create(StudioScale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                        Scale = TargetScale,
-                    }):Play()
-                end
-            else
-                TweenService:Create(StudioHolder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                    GroupTransparency = 1,
-                }):Play()
-                if StudioScale then
-                    TweenService:Create(StudioScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                        Scale = TargetScale * 0.96,
-                    }):Play()
-                end
-                task.delay(0.18, function()
-                    if AnimationId == StudioAnimationId and not StudioOpen and StudioHolder.Parent then
-                        StudioHolder.Visible = false
-                    end
+            end
+            StudioTween = TweenService:Create(StudioHolder, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                GroupTransparency = StudioOpen and 0 or 1,
+            })
+            StudioTween:Play()
+            if not StudioOpen then
+                task.delay(0.16, function()
+                    if AnimationId == StudioAnimationId and StudioHolder.Parent then StudioHolder.Visible = false end
                 end)
             end
         end
-        local Studio = {
-            Type = "Groupbox",
-            Container = StudioContainer,
-            Elements = {},
-            DependencyBoxes = {},
-            Connections = {},
-            Destroyed = false,
-            Resize = function() end,
-        }
-        setmetatable(Studio, BaseGroupbox)
-        Studio:AddButton({
-            Text = "Close Theme Studio",
-            Func = function() SetStudioVisible(false) end,
+        local StudioClose = New("TextButton", {
+            BackgroundColor3 = "MainColor", Text = "X", TextSize = 13,
+            Position = UDim2.new(1, -32, 0, 5), Size = UDim2.fromOffset(25, 24),
+            ZIndex = 53, Parent = StudioHolder,
         })
-        Studio:AddLabel({
-            Text = "fine-tune your menu appearance",
-            DoesWrap = true,
-            Size = 12,
+        Library:GiveSignal(StudioClose.MouseButton1Click:Connect(function() SetStudioVisible(false) end))
+        local StudioTabs = New("Frame", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 40),
+            Size = UDim2.new(1, -16, 0, 30), ZIndex = 52, Parent = StudioHolder,
         })
-        local StudioGradient = Studio:AddCollapsible({
-            Text = "gradients",
-            Expanded = true,
-            Indent = 10,
-            Spacing = 6,
-        })
-        local StudioSurface = Studio:AddCollapsible({
-            Text = "surface",
-            Expanded = false,
-            Indent = 10,
-            Spacing = 6,
-        })
-        local StudioLayout = Studio:AddCollapsible({
-            Text = "layout & branding",
-            Expanded = true,
-            Indent = 10,
-            Spacing = 6,
-        })
+        local StudioPages = {}
+        local function AddStudioPage(Name)
+            local Index = #StudioPages
+            local Page = New("Frame", {
+                BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y,
+                Size = UDim2.new(1, -5, 0, 0), Visible = Index == 0, Parent = StudioContainer,
+            })
+            New("UIListLayout", {Padding = UDim.new(0, 10), Parent = Page})
+            local Button = New("TextButton", {
+                BackgroundColor3 = "MainColor", Text = Name, TextSize = 13,
+                Position = UDim2.new(Index / 3, 2, 0, 0), Size = UDim2.new(1 / 3, -4, 1, 0),
+                ZIndex = 53, Parent = StudioTabs,
+            })
+            local Outline = Library:AddOutline(Button)
+            Outline.Transparency = Index == 0 and 0 or 0.7
+            local Group = {Type = "Groupbox", Container = Page, Elements = {}, DependencyBoxes = {}, Connections = {}, Destroyed = false, Resize = function() end}
+            setmetatable(Group, BaseGroupbox)
+            table.insert(StudioPages, {Page = Page, Outline = Outline})
+            Library:GiveSignal(Button.MouseButton1Click:Connect(function()
+                for _, Entry in StudioPages do
+                    Entry.Page.Visible = Entry.Page == Page
+                    Entry.Outline.Transparency = Entry.Page == Page and 0 or 0.7
+                end
+                StudioContainer.CanvasPosition = Vector2.zero
+            end))
+            return Group
+        end
+        local StudioGradient = AddStudioPage("Gradients")
+        local StudioSurface = AddStudioPage("Colors")
+        local StudioLayout = AddStudioPage("Layout")
         if Tab.Tabboxes.Configs then
             Tab.Tabboxes.Configs:Destroy()
             Tab.Tabboxes.Configs = nil
@@ -14432,9 +14431,9 @@ function Library:CreateWindow(WindowInfo)
                 end,
             })
             Notifications:AddDropdown(Prefix .. "NotifySide", {
-                Text = "Notification Side",
-                Values = { "Left", "Right" },
-                Default = "Left",
+                Text = "Notification Position",
+                Values = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" },
+                Default = Library.NotifySide,
                 Callback = function(Value) Library:SetNotifySide(Value) end,
             })
             Notifications:AddButton({
@@ -14482,7 +14481,7 @@ function Library:CreateWindow(WindowInfo)
         })
         Themes:AddButton({
             Text = "Advanced Theme Studio",
-            Func = function() SetStudioVisible(true) end,
+            Func = function() SetStudioVisible(not StudioOpen) end,
         })
         StudioGradient:AddSlider(Prefix .. "GradientSpeed", {
             Text = "Gradient Speed",
@@ -14658,7 +14657,7 @@ function Library:CreateWindow(WindowInfo)
         })
         StudioLayout:AddDropdown(Prefix .. "StudioNotifySide", {
             Text = "Notification Side",
-            Values = { "Left", "Right" },
+            Values = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" },
             Default = Library.NotifySide,
             Callback = function(Value) Library:SetNotifySide(Value) end,
         })
@@ -15001,6 +15000,8 @@ function Library:CreateWindow(WindowInfo)
         local Whitelist = Info.Whitelist or {}
         local Selected
         local Spectated
+        local SpectateCameraState
+        local SpectateSubject
         local SpectateConnection
         local SpectateCharacterConnection
         local Tab = Window:AddContainerlessTab({
@@ -15046,11 +15047,18 @@ function Library:CreateWindow(WindowInfo)
             if SpectateConnection then SpectateConnection:Disconnect(); SpectateConnection = nil end
             if SpectateCharacterConnection then SpectateCharacterConnection:Disconnect(); SpectateCharacterConnection = nil end
             local Camera = workspace.CurrentCamera
-            local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
-            if Camera then
-                Camera.CameraType = Enum.CameraType.Custom
-                if Humanoid then Camera.CameraSubject = Humanoid end
+            local Saved = SpectateCameraState
+            --// Restore only the camera state that this spectate session owns.
+            if Saved and Camera == Saved.Camera and Camera.CameraSubject == SpectateSubject then
+                local Subject = Saved.Subject
+                if not Subject or Subject.Parent then
+                    Camera.CameraSubject = Subject
+                    Camera.CameraType = Saved.Type
+                    Camera.CFrame = Saved.CFrame
+                end
             end
+            SpectateCameraState = nil
+            SpectateSubject = nil
         end
 
         local function ApplySpectate(Player)
@@ -15062,6 +15070,10 @@ function Library:CreateWindow(WindowInfo)
                 local Camera = workspace.CurrentCamera
                 local Humanoid = Spectated.Character and Spectated.Character:FindFirstChildWhichIsA("Humanoid")
                 if Camera and Humanoid then
+                    if not SpectateCameraState or SpectateCameraState.Camera ~= Camera then
+                        SpectateCameraState = {Camera = Camera, Subject = Camera.CameraSubject, Type = Camera.CameraType, CFrame = Camera.CFrame}
+                    end
+                    SpectateSubject = Humanoid
                     Camera.CameraType = Enum.CameraType.Custom
                     Camera.CameraSubject = Humanoid
                 end
@@ -15140,6 +15152,8 @@ function Library:CreateWindow(WindowInfo)
         Info = Info or {}
         local Whitelist = Info.Whitelist or {}
         local Spectated
+        local SpectateCameraState
+        local SpectateSubject
         local SpectateConnection
         local SpectateCharacterConnection
         local Cards = {}
@@ -15148,12 +15162,13 @@ function Library:CreateWindow(WindowInfo)
             Icon = Info.Icon or "users",
             Header = Info.Header or "players",
             HeaderSize = 20,
-            ActionText = ">",
+            ActionText = "Details",
             ActionAlignment = "Right",
-            ActionWidth = 30,
+            ActionWidth = 92,
             ContentSpacing = 7,
         })
         local Content = Tab.Content
+        Tab.Root.ClipsDescendants = true
         local EmptyLabel = New("TextLabel", {
             BackgroundTransparency = 1,
             LayoutOrder = 1000000,
@@ -15169,8 +15184,8 @@ function Library:CreateWindow(WindowInfo)
             BackgroundColor3 = "MainColor",
             BackgroundTransparency = Library.LiquidGlass and 0.12 or 0.04,
             GroupTransparency = 1,
-            Position = UDim2.new(1, 10, 0, 51),
-            Size = UDim2.new(0.5, -5, 1, -51),
+            Position = UDim2.new(0, 0, 1, -110),
+            Size = UDim2.new(1, 0, 0, 110),
             Visible = false,
             Parent = Tab.Root,
         })
@@ -15182,11 +15197,11 @@ function Library:CreateWindow(WindowInfo)
         local CloseSide = New("TextButton", {
             AutoButtonColor = false,
             BackgroundColor3 = "BackgroundColor",
-            Position = UDim2.fromOffset(8, 8),
+            Position = UDim2.new(1, -36, 0, 8),
             Size = UDim2.fromOffset(28, 28),
-            Text = "<",
-            TextSize = 17,
-            Visible = false,
+            Text = "X",
+            TextSize = 14,
+            Visible = true,
             Parent = SidePanel,
         })
         table.insert(Library.Corners, New("UICorner", {
@@ -15196,7 +15211,7 @@ function Library:CreateWindow(WindowInfo)
         Library:AddOutline(CloseSide)
         local SideAvatar = New("ImageLabel", {
             BackgroundColor3 = "BackgroundColor",
-            Position = UDim2.fromOffset(46, 8),
+            Position = UDim2.fromOffset(8, 8),
             Size = UDim2.fromOffset(44, 44),
             Parent = SidePanel,
         })
@@ -15206,8 +15221,8 @@ function Library:CreateWindow(WindowInfo)
         }))
         local SideName = New("TextLabel", {
             BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(98, 8),
-            Size = UDim2.new(1, -106, 0, 20),
+            Position = UDim2.fromOffset(64, 8),
+            Size = UDim2.new(1, -108, 0, 20),
             Text = "select a player",
             TextSize = 14,
             TextTruncate = Enum.TextTruncate.AtEnd,
@@ -15216,8 +15231,8 @@ function Library:CreateWindow(WindowInfo)
         })
         local SideDetails = New("TextLabel", {
             BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(98, 27),
-            Size = UDim2.new(1, -106, 0, 24),
+            Position = UDim2.fromOffset(64, 27),
+            Size = UDim2.new(1, -108, 0, 24),
             Text = "",
             TextSize = 11,
             TextTransparency = 0.4,
@@ -15240,30 +15255,25 @@ function Library:CreateWindow(WindowInfo)
         }))
         Library:AddOutline(SideWhitelist)
 
+        local SideTween
+        local SideAnimationId = 0
         local function SetSideOpen(Open)
-            SideOpen = Open == true
-            if Tab.HeaderAction then Tab.HeaderAction.Text = SideOpen and "<" or ">" end
-            if SideOpen then
-                SidePanel.Visible = true
-                SidePanel.GroupTransparency = 1
-                SidePanel.Position = UDim2.new(0.58, 5, 0, 51)
-                TweenService:Create(Content, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(0.5, -5, 1, -51),
-                }):Play()
-                TweenService:Create(SidePanel, TweenInfo.new(0.48, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    GroupTransparency = 0,
-                    Position = UDim2.new(0.5, 5, 0, 51),
-                }):Play()
-            else
-                TweenService:Create(Content, TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-                    Size = UDim2.new(1, 0, 1, -51),
-                }):Play()
-                TweenService:Create(SidePanel, TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-                    GroupTransparency = 1,
-                    Position = UDim2.new(0.58, 5, 0, 51),
-                }):Play()
-                task.delay(0.36, function()
-                    if not SideOpen and SidePanel.Parent then SidePanel.Visible = false end
+            Open = Open == true
+            if SideOpen == Open then return end
+            SideOpen = Open
+            SideAnimationId += 1
+            local AnimationId = SideAnimationId
+            if SideTween then SideTween:Cancel() end
+            if Tab.HeaderAction then Tab.HeaderAction.Text = SideOpen and "Hide details" or "Details" end
+            Content.Size = UDim2.new(1, 0, 1, SideOpen and -171 or -51)
+            if SideOpen then SidePanel.Visible = true end
+            SideTween = TweenService:Create(SidePanel, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                GroupTransparency = SideOpen and 0 or 1,
+            })
+            SideTween:Play()
+            if not SideOpen then
+                task.delay(0.14, function()
+                    if AnimationId == SideAnimationId and SidePanel.Parent then SidePanel.Visible = false end
                 end)
             end
         end
@@ -15278,7 +15288,7 @@ function Library:CreateWindow(WindowInfo)
             SideWhitelist.Text = Whitelist[Player.UserId] and "remove whitelist" or "whitelist"
             SetSideOpen(true)
         end
-        Tab:SetHeaderAction(">", function()
+        Tab:SetHeaderAction("Details", function()
             SetSideOpen(not SideOpen)
         end)
         Library:GiveSignal(CloseSide.MouseButton1Click:Connect(function()
@@ -15293,7 +15303,7 @@ function Library:CreateWindow(WindowInfo)
             if Entry and Entry.RefreshWhitelist then Entry.RefreshWhitelist() end
             if Info.OnWhitelist then Info.OnWhitelist(Selected, Value) end
         end))
-        SetSideOpen(true)
+        SetSideOpen(false)
 
         local function StopSpectating()
             if not Spectated then return end
@@ -15301,11 +15311,18 @@ function Library:CreateWindow(WindowInfo)
             if SpectateConnection then SpectateConnection:Disconnect(); SpectateConnection = nil end
             if SpectateCharacterConnection then SpectateCharacterConnection:Disconnect(); SpectateCharacterConnection = nil end
             local Camera = workspace.CurrentCamera
-            local Humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildWhichIsA("Humanoid")
-            if Camera then
-                Camera.CameraType = Enum.CameraType.Custom
-                if Humanoid then Camera.CameraSubject = Humanoid end
+            local Saved = SpectateCameraState
+            --// Restore only the camera state that this spectate session owns.
+            if Saved and Camera == Saved.Camera and Camera.CameraSubject == SpectateSubject then
+                local Subject = Saved.Subject
+                if not Subject or Subject.Parent then
+                    Camera.CameraSubject = Subject
+                    Camera.CameraType = Saved.Type
+                    Camera.CFrame = Saved.CFrame
+                end
             end
+            SpectateCameraState = nil
+            SpectateSubject = nil
         end
 
         local function ApplySpectate(Player)
@@ -15317,6 +15334,10 @@ function Library:CreateWindow(WindowInfo)
                 local Camera = workspace.CurrentCamera
                 local Humanoid = Spectated.Character and Spectated.Character:FindFirstChildWhichIsA("Humanoid")
                 if Camera and Humanoid then
+                    if not SpectateCameraState or SpectateCameraState.Camera ~= Camera then
+                        SpectateCameraState = {Camera = Camera, Subject = Camera.CameraSubject, Type = Camera.CameraType, CFrame = Camera.CFrame}
+                    end
+                    SpectateSubject = Humanoid
                     Camera.CameraType = Enum.CameraType.Custom
                     Camera.CameraSubject = Humanoid
                 end
@@ -15463,10 +15484,8 @@ function Library:CreateWindow(WindowInfo)
             end)
             if Library.ActiveTab == Tab and Tab.Canvas.Visible then
                 Card.GroupTransparency = 1
-                Card.Position = UDim2.fromOffset(0, 10)
-                TweenService:Create(Card, TweenInfo.new(0.34, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                TweenService:Create(Card, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     GroupTransparency = 0,
-                    Position = UDim2.fromOffset(0, 0),
                 }):Play()
             end
         end
@@ -15490,7 +15509,11 @@ function Library:CreateWindow(WindowInfo)
         for _, Player in Players:GetPlayers() do AddPlayerCard(Player) end
         Library:GiveSignal(Players.PlayerAdded:Connect(AddPlayerCard))
         Library:GiveSignal(Players.PlayerRemoving:Connect(RemovePlayerCard))
-        Library:GiveSignal(RunService.RenderStepped:Connect(function()
+        local PlayerRefreshClock = 0
+        Library:GiveSignal(RunService.Heartbeat:Connect(function(Delta)
+            PlayerRefreshClock += Delta
+            if PlayerRefreshClock < 0.25 or not Tab.Canvas.Visible then return end
+            PlayerRefreshClock = 0
             for Player, Entry in Cards do
                 if not Player.Parent then continue end
                 local Character = Player.Character
