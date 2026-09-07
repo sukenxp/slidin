@@ -1671,11 +1671,18 @@ function Library:SetCornerRadius(Radius)
     return Radius
 end
 
+function Library:GetThemeColor(Name)
+    return Library.DisplayScheme and Library.DisplayScheme[Name] or Library.Scheme[Name]
+end
+
 function Library:SetTheme(Name)
     local Theme = Library.Themes[Name]
     if not Theme then
         return false
     end
+    local Previous = table.clone(Library.DisplayScheme or Library.Scheme)
+    Library.ThemeTransitionId = (Library.ThemeTransitionId or 0) + 1
+    local TransitionId = Library.ThemeTransitionId
     for Index, Value in pairs(Theme) do
         if Library.Scheme[Index] ~= nil and typeof(Value) == typeof(Library.Scheme[Index]) then
             Library.Scheme[Index] = Value
@@ -1684,9 +1691,27 @@ function Library:SetTheme(Name)
     Library.ActiveTheme = Name
     local Background = Library.Scheme.BackgroundColor
     Library.IsLightTheme = Background.R * 0.299 + Background.G * 0.587 + Background.B * 0.114 > 0.55
-    for _, Gradient in Library.DarkGradients do
-        Gradient.Color = ColorSequence.new(Library.Scheme.BackgroundColor, Library.Scheme.MainColor)
-    end
+    local TargetScheme = table.clone(Library.Scheme)
+    Library.DisplayScheme = table.clone(Previous)
+    task.spawn(function()
+        local Started = os.clock()
+        while not Library.Unloaded and Library.ThemeTransitionId == TransitionId do
+            local Alpha = math.clamp((os.clock() - Started) / 0.38, 0, 1)
+            local Eased = 1 - (1 - Alpha) ^ 3
+            for Name, Color in TargetScheme do
+                if typeof(Color) == "Color3" and typeof(Previous[Name]) == "Color3" then
+                    Library.DisplayScheme[Name] = Previous[Name]:Lerp(Color, Eased)
+                end
+            end
+            for _, Gradient in Library.DarkGradients do
+                if Gradient.Parent then
+                    Gradient.Color = ColorSequence.new(Library.DisplayScheme.BackgroundColor, Library.DisplayScheme.MainColor)
+                end
+            end
+            if Alpha >= 1 then Library.DisplayScheme = nil; break end
+            RunService.RenderStepped:Wait()
+        end
+    end)
     Library:SetGradientColors(Theme.GradientStart, Theme.GradientEnd)
 
     for Instance, Properties in Library.Registry do
@@ -1713,6 +1738,16 @@ function Library:SetTheme(Name)
     end
 
     return true
+end
+
+function Library:SetFPSCap(Value)
+    local Cap = math.clamp(math.floor(tonumber(Value) or 60), 30, 1000)
+    local Setter = setfpscap or getgenv().setfpscap
+    if type(Setter) ~= "function" then return false, "FPS control is unavailable in this executor." end
+    local Success, Result = pcall(Setter, Cap)
+    if not Success or Result == false then return false, "Could not apply FPS cap: " .. tostring(Result) end
+    Library.RequestedFPSCap = Cap
+    return true, "FPS cap requested: " .. tostring(Cap)
 end
 
 function Library:SetGradientSpeed(Duration)
@@ -3583,6 +3618,7 @@ do
 
             Toggled = false,
             Mode = Info.Mode,
+            RequireToggle = ParentObj.Type == "Toggle" and Info.RequireToggle ~= false,
             SyncToggleState = Info.SyncToggleState,
             DoubleTap = Info.DoubleTap == true,
             DoubleTapInterval = math.clamp(tonumber(Info.DoubleTapInterval) or 0.28, 0.1, 1),
@@ -3612,6 +3648,11 @@ do
             if not table.find(Info.Modes, Info.Mode) then
                 Info.Mode = "Toggle"
             end
+        end
+
+        if KeyPicker.RequireToggle then
+            KeyPicker.SyncToggleState = false
+            KeyPicker.Toggled = ParentObj.Value == true
         end
 
         local Picking = false
@@ -4125,6 +4166,15 @@ do
             end
 
             local State = KeyPicker:GetState()
+            if KeyPicker.RequireToggle and KeyPicker.Mode == "Hold" and KeyPicker.LastHoldState ~= State then
+                KeyPicker.LastHoldState = State
+                if Info.SyncToggleState then
+                    Library:SafeCallback(ParentObj.Callback, State)
+                    Library:SafeCallback(ParentObj.Changed, State)
+                else
+                    Library:SafeCallback(KeyPicker.Callback, State)
+                end
+            end
             local ShowToggle = Library.ShowToggleFrameInKeybinds and KeyPicker.Mode == "Toggle"
 
             if KeyPicker.SyncToggleState and ParentObj.Value ~= State then
@@ -4145,6 +4195,7 @@ do
         end
 
         function KeyPicker:GetState()
+            if KeyPicker.RequireToggle and (ParentObj.Value ~= true or ParentObj.Disabled) then return false end
             if KeyPicker.Mode == "Always" then
                 return true
             elseif KeyPicker.Mode == "Hold" then
@@ -4185,6 +4236,7 @@ do
         end
 
         function KeyPicker:DoClick()
+            if KeyPicker.RequireToggle and (ParentObj.Value ~= true or ParentObj.Disabled) then return end
             if Picking then
                 return
             end
@@ -4197,6 +4249,10 @@ do
 				KeyPicker.Toggled = true
             end
 
+            if KeyPicker.RequireToggle and Info.SyncToggleState then
+                Library:SafeCallback(ParentObj.Callback, KeyPicker.Toggled)
+                Library:SafeCallback(ParentObj.Changed, KeyPicker.Toggled)
+            end
             Library:SafeCallback(KeyPicker.Callback, KeyPicker.Toggled)
             Library:SafeCallback(KeyPicker.Clicked, KeyPicker.Toggled)
 
@@ -4464,7 +4520,8 @@ do
 
             local IsMouse = IsMouseClickInput(Input)
             if
-                KeyPicker.Mode == "Always"
+                (KeyPicker.RequireToggle and (ParentObj.Value ~= true or ParentObj.Disabled))
+                or KeyPicker.Mode == "Always"
                 or KeyPicker.Value == "Unknown"
                 or KeyPicker.Value == "None"
                 or Picking
@@ -6184,8 +6241,14 @@ do
         end
 
         function Toggle:RunChanged()
-            Library:SafeCallback(Toggle.Callback, Toggle.Value)
-            Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            local Effective = Toggle.Value
+            for _, Addon in Toggle.Addons do
+                if Addon.Type == "KeyPicker" and Addon.RequireToggle and Addon.Mode == "Hold" then
+                    Effective = Effective and Addon:GetState()
+                end
+            end
+            Library:SafeCallback(Toggle.Callback, Effective)
+            Library:SafeCallback(Toggle.Changed, Effective)
         end
 
         function Toggle:SetValue(Value)
@@ -6197,7 +6260,7 @@ do
             Toggle:Display()
 
             for _, Addon in Toggle.Addons do
-                if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+                if Addon.Type == "KeyPicker" and (Addon.SyncToggleState or Addon.RequireToggle) then
                     Addon.Toggled = Toggle.Value
                     Addon:Update()
                 end
@@ -6218,7 +6281,7 @@ do
             end
 
             for _, Addon in Toggle.Addons do
-                if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+                if Addon.Type == "KeyPicker" and (Addon.SyncToggleState or Addon.RequireToggle) then
                     Addon:Update()
                 end
             end
@@ -6455,8 +6518,14 @@ do
         end
 
         function Toggle:RunChanged()
-            Library:SafeCallback(Toggle.Callback, Toggle.Value)
-            Library:SafeCallback(Toggle.Changed, Toggle.Value)
+            local Effective = Toggle.Value
+            for _, Addon in Toggle.Addons do
+                if Addon.Type == "KeyPicker" and Addon.RequireToggle and Addon.Mode == "Hold" then
+                    Effective = Effective and Addon:GetState()
+                end
+            end
+            Library:SafeCallback(Toggle.Callback, Effective)
+            Library:SafeCallback(Toggle.Changed, Effective)
         end
 
         function Toggle:SetValue(Value)
@@ -6468,7 +6537,7 @@ do
             Toggle:Display()
 
             for _, Addon in Toggle.Addons do
-                if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+                if Addon.Type == "KeyPicker" and (Addon.SyncToggleState or Addon.RequireToggle) then
                     Addon.Toggled = Toggle.Value
                     Addon:Update()
                 end
@@ -6489,7 +6558,7 @@ do
             end
 
             for _, Addon in Toggle.Addons do
-                if Addon.Type == "KeyPicker" and Addon.SyncToggleState then
+                if Addon.Type == "KeyPicker" and (Addon.SyncToggleState or Addon.RequireToggle) then
                     Addon:Update()
                 end
             end
@@ -14703,6 +14772,12 @@ function Library:CreateWindow(WindowInfo)
         end
         Library.KeybindMenuToggle = KeybindMenuToggle
         if not HadInterface then
+            local FPSStatus = Interface:AddLabel("FPS cap: not applied", true)
+            local function ApplyFPS(Value, ShowFailure)
+                local Success, Message = Library:SetFPSCap(Value)
+                FPSStatus:SetText(Message)
+                if not Success and ShowFailure then Library:Notify({Title = "FPS Cap", Description = Message, Time = 4}) end
+            end
             Interface:AddSlider(Prefix .. "FPSCap", {
                 Text = "FPS Cap",
                 Default = 60,
@@ -14713,11 +14788,13 @@ function Library:CreateWindow(WindowInfo)
                 Suffix = " fps",
                 Tooltip = "Sets the client frame-rate limit when supported by the environment.",
                 Callback = function(Value)
-                    if typeof(setfpscap) == "function" then
-                        pcall(setfpscap, Value)
-                    end
+                    ApplyFPS(Value)
                 end,
             })
+            Interface:AddButton({Text = "Apply FPS Cap", Func = function()
+                local Option = Options[Prefix .. "FPSCap"]
+                ApplyFPS(Option and Option.Value or 60, true)
+            end})
             Interface:AddLabel("Menu Key"):AddKeyPicker(Prefix .. "MenuKey", {
                 Default = Info.MenuKey or "RightShift",
                 NoUI = true,
@@ -15167,8 +15244,8 @@ function Library:CreateWindow(WindowInfo)
             BackgroundColor3 = "MainColor",
             BackgroundTransparency = Library.LiquidGlass and 0.12 or 0.04,
             GroupTransparency = 1,
-            Position = UDim2.new(0, 0, 1, -110),
-            Size = UDim2.new(1, 0, 0, 110),
+            Position = UDim2.new(0, 0, 1, -134),
+            Size = UDim2.new(1, 0, 0, 134),
             Visible = false,
             Parent = Tab.Root,
         })
@@ -15214,12 +15291,14 @@ function Library:CreateWindow(WindowInfo)
         })
         local SideDetails = New("TextLabel", {
             BackgroundTransparency = 1,
-            Position = UDim2.fromOffset(64, 27),
-            Size = UDim2.new(1, -108, 0, 24),
+            Position = UDim2.fromOffset(64, 32),
+            Size = UDim2.new(1, -80, 0, 48),
+            TextWrapped = true,
+            TextYAlignment = Enum.TextYAlignment.Top,
             Text = "",
             TextSize = 11,
             TextTransparency = 0.4,
-            TextTruncate = Enum.TextTruncate.AtEnd,
+            TextTruncate = Enum.TextTruncate.None,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = SidePanel,
         })
@@ -15238,20 +15317,34 @@ function Library:CreateWindow(WindowInfo)
         }))
         Library:AddOutline(SideWhitelist)
 
+        local ContentTween
         local SideTween
         local SideAnimationId = 0
         local function SetSideOpen(Open)
             Open = Open == true
-            if SideOpen == Open then return end
+            if SideOpen == Open then
+                if Open then
+                    if SideTween then SideTween:Cancel() end
+                    SidePanel.GroupTransparency = 0.2
+                    SideTween = TweenService:Create(SidePanel, TweenInfo.new(0.16), {GroupTransparency = 0})
+                    SideTween:Play()
+                end
+                return
+            end
             SideOpen = Open
             SideAnimationId += 1
             local AnimationId = SideAnimationId
             if SideTween then SideTween:Cancel() end
             if Tab.HeaderAction then Tab.HeaderAction.Text = SideOpen and "Hide details" or "Details" end
-            Content.Size = UDim2.new(1, 0, 1, SideOpen and -171 or -51)
+            if ContentTween then ContentTween:Cancel() end
+            ContentTween = TweenService:Create(Content, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = UDim2.new(1, 0, 1, SideOpen and -195 or -51),
+            })
+            ContentTween:Play()
             if SideOpen then SidePanel.Visible = true end
             SideTween = TweenService:Create(SidePanel, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                 GroupTransparency = SideOpen and 0 or 1,
+                Position = UDim2.new(0, 0, 1, SideOpen and -134 or -126),
             })
             SideTween:Play()
             if not SideOpen then
@@ -15506,7 +15599,7 @@ function Library:CreateWindow(WindowInfo)
                 local TeamName = Player.Team and Player.Team.Name or "neutral"
                 Entry.DetailLabel.Text = string.format("@%s  •  %s  •  %d/%d hp", Player.Name, TeamName, Health, MaxHealth)
                 if Selected == Player then
-                    SideDetails.Text = Entry.DetailLabel.Text
+                    SideDetails.Text = string.format("@%s\n%s | %d/%d HP", Player.Name, TeamName, Health, MaxHealth)
                     if SideAvatar.Image ~= Entry.Avatar.Image then SideAvatar.Image = Entry.Avatar.Image end
                 end
             end
@@ -16344,7 +16437,25 @@ Library:GiveSignal(Teams.ChildAdded:Connect(OnTeamChange))
 Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 
 function Library:Unload()
+    if Library.Unloaded then return end
     Library.Unloaded = true
+    local Surface = Library.MainMenuSurface
+    local Farewell
+    if ScreenGui and ScreenGui.Parent and Surface and Surface.Parent then
+        Farewell = New("CanvasGroup", {
+            BackgroundColor3 = Library.Scheme.BackgroundColor, Position = Surface.Position,
+            AnchorPoint = Surface.AnchorPoint, Size = Surface.Size, ZIndex = 20000, Parent = ScreenGui,
+        })
+        New("UIScale", {Scale = Library.DPIScale, Parent = Farewell})
+        New("UICorner", {CornerRadius = UDim.new(0, Library.CornerRadius), Parent = Farewell})
+        New("TextLabel", {
+            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "bye",
+            TextSize = 28, TextColor3 = Library.Scheme.FontColor, ZIndex = 20001, Parent = Farewell,
+        })
+        for _, Child in ScreenGui:GetChildren() do
+            if Child:IsA("GuiObject") and Child ~= Farewell then Child.Visible = false end
+        end
+    end
 
     --// Disconnect connections
     for Index = #Library.Signals, 1, -1 do
@@ -16385,7 +16496,14 @@ function Library:Unload()
         Library.ActiveLoading:Destroy()
     end
 
-    if ScreenGui then
+    if Farewell then
+        task.delay(0.2, function()
+            if not Farewell.Parent then return end
+            local Fade = TweenService:Create(Farewell, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {GroupTransparency = 1})
+            Fade.Completed:Once(function() if ScreenGui then ScreenGui:Destroy() end end)
+            Fade:Play()
+        end)
+    elseif ScreenGui then
         ScreenGui:Destroy()
     end
     if Library.BlurEffect then
