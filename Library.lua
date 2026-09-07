@@ -1743,11 +1743,11 @@ end
 function Library:SetFPSCap(Value)
     local Cap = math.clamp(math.floor(tonumber(Value) or 60), 30, 1000)
     local Setter = setfpscap or getgenv().setfpscap
-    if type(Setter) ~= "function" then return false, "FPS control is unavailable in this executor." end
+    if type(Setter) ~= "function" then return false, "fps control is unavailable in this executor." end
     local Success, Result = pcall(Setter, Cap)
-    if not Success or Result == false then return false, "Could not apply FPS cap: " .. tostring(Result) end
+    if not Success or Result == false then return false, "Could not apply fps cap: " .. tostring(Result) end
     Library.RequestedFPSCap = Cap
-    return true, "FPS cap requested: " .. tostring(Cap)
+    return true, "fps cap requested: " .. tostring(Cap)
 end
 
 function Library:SetGradientSpeed(Duration)
@@ -9334,6 +9334,24 @@ function Library:SetNotifySide(Side: string)
     Library:UpdateNotificationPositions(true)
 end
 
+--// notification actions share their answer between the toast and history
+function Library:ResolveNotificationAction(State, Action, Context)
+    if Library.Unloaded or State.Resolved then return false end
+    if Action.Close ~= false then
+        State.Resolved = true
+        State.Choice = tostring(Action.Text or Action.Title or "action")
+        for Button in State.Buttons do
+            if Button.Parent then
+                Button.Active = false
+                Button.AutoButtonColor = false
+                Button.TextTransparency = 0.55
+            end
+        end
+    end
+    Library:SafeCallback(Action.Callback or Action.Func, Context)
+    return true
+end
+
 function Library:Notify(...)
     local Data = {}
     local Info = select(1, ...)
@@ -9372,6 +9390,7 @@ function Library:Notify(...)
         Data.DescriptionColor = Data.DescriptionColor or Color3.fromRGB(255, 190, 194)
     end
     Data.Destroyed = false
+    Data.ActionState = {Resolved = false, Buttons = setmetatable({}, {__mode = "k"})}
 
     if Data.RecordHistory then
         local HistoryEntry = {
@@ -9379,6 +9398,8 @@ function Library:Notify(...)
             Description = Data.Description or "",
             Status = Data.Status,
             Timestamp = os.date("%H:%M:%S"),
+            Actions = Data.Actions,
+            ActionState = Data.ActionState,
         }
         table.insert(Library.NotificationHistory, 1, HistoryEntry)
         while #Library.NotificationHistory > 100 do table.remove(Library.NotificationHistory) end
@@ -9672,8 +9693,11 @@ function Library:Notify(...)
                 Parent = ActionButton,
             }))
             Library:AddOutline(ActionButton)
+            Data.ActionState.Buttons[ActionButton] = true
+            ActionButton.Active = not Data.ActionState.Resolved
+            ActionButton.TextTransparency = Data.ActionState.Resolved and 0.55 or 0
             ActionButton.MouseButton1Click:Connect(function()
-                Library:SafeCallback(Action.Callback or Action.Func, Data)
+                if not Library:ResolveNotificationAction(Data.ActionState, Action, Data) then return end
                 if Action.Close ~= false and not Data.Destroyed then Data:Destroy() end
             end)
         end
@@ -11226,12 +11250,15 @@ function Library:CreateWindow(WindowInfo)
                 Size = UDim2.fromOffset(Active and 7 or 5, Active and 7 or 5),
             }):Play()
         end
-        -- Keep the controls readable even with one section; they describe the
-        -- direction and become fully functional once another section exists.
-        local ArrowTransparency = SectionCount > 1 and 0.02 or 0.38
-        for _, Arrow in {SidebarPreviousIcon, SidebarNextIcon} do
+        --// directional navigation stops at the first and last pages
+        local CanGoUp = SidebarSection > 1
+        local CanGoDown = SidebarSection < SectionCount
+        SidebarPrevious.Active = CanGoUp
+        SidebarNext.Active = CanGoDown
+        for Index, Arrow in {SidebarPreviousIcon, SidebarNextIcon} do
+            local Enabled = Index == 1 and CanGoUp or Index == 2 and CanGoDown
             if Arrow then
-                for _, Line in Arrow:GetChildren() do Line.BackgroundTransparency = ArrowTransparency end
+                for _, Line in Arrow:GetChildren() do Line.BackgroundTransparency = Enabled and 0.02 or 0.7 end
             end
         end
         Tabs.CanvasPosition = Vector2.zero
@@ -11260,7 +11287,8 @@ function Library:CreateWindow(WindowInfo)
 
     local function CycleSidebarSection(Direction)
         local Count = math.max(1, math.ceil(#OrderedTabs / GetTabsPerSection()))
-        ApplySidebarSection(((SidebarSection - 1 + Direction) % Count) + 1, true)
+        local Target = math.clamp(SidebarSection + Direction, 1, Count)
+        if Target ~= SidebarSection then ApplySidebarSection(Target, true) end
     end
     Library:GiveSignal(SidebarPrevious.MouseButton1Click:Connect(function() CycleSidebarSection(-1) end))
     Library:GiveSignal(SidebarNext.MouseButton1Click:Connect(function() CycleSidebarSection(1) end))
@@ -14772,14 +14800,12 @@ function Library:CreateWindow(WindowInfo)
         end
         Library.KeybindMenuToggle = KeybindMenuToggle
         if not HadInterface then
-            local FPSStatus = Interface:AddLabel("FPS cap: not applied", true)
             local function ApplyFPS(Value, ShowFailure)
                 local Success, Message = Library:SetFPSCap(Value)
-                FPSStatus:SetText(Message)
-                if not Success and ShowFailure then Library:Notify({Title = "FPS Cap", Description = Message, Time = 4}) end
+                if not Success and ShowFailure then Library:Notify({Title = "fps Cap", Description = Message, Time = 4}) end
             end
             Interface:AddSlider(Prefix .. "FPSCap", {
-                Text = "FPS Cap",
+                Text = "fps Cap",
                 Default = 60,
                 Min = 30,
                 Max = 360,
@@ -14791,7 +14817,7 @@ function Library:CreateWindow(WindowInfo)
                     ApplyFPS(Value)
                 end,
             })
-            Interface:AddButton({Text = "Apply FPS Cap", Func = function()
+            Interface:AddButton({Text = "Apply fps Cap", Func = function()
                 local Option = Options[Prefix .. "FPSCap"]
                 ApplyFPS(Option and Option.Value or 60, true)
             end})
@@ -14878,13 +14904,6 @@ function Library:CreateWindow(WindowInfo)
             if Success then AutoloadProfileLabel:SetText("Autoload: " .. tostring(Name)) end
             Library:Notify({ Title = "Profiles", Description = Success and ("Autoload: " .. Name) or "Autoload failed", Time = 3 })
         end })
-        Profiles:AddButton({ Text = "Duplicate", Func = function()
-            local Name = Options[Prefix .. "ProfileList"].Value
-            local NewName = Options[Prefix .. "ProfileName"].Value
-            local Success = Library:DuplicateProfile(Name, NewName ~= "" and NewName or nil)
-            RefreshProfiles()
-            Library:Notify({ Title = "Profiles", Description = Success and "Profile duplicated" or "Duplicate failed", Time = 3 })
-        end })
         Profiles:AddButton({ Text = "Rename", Func = function()
             local OldName = Options[Prefix .. "ProfileList"].Value
             local NewName = Options[Prefix .. "ProfileName"].Value
@@ -14960,13 +14979,14 @@ function Library:CreateWindow(WindowInfo)
 
         local function AddHistoryEntry(Entry, AddToTop)
             if not Entry or not HistoryContainer.Parent then return end
+            local HasActions = type(Entry.Actions) == "table" and #Entry.Actions > 0 and Entry.ActionState ~= nil
             local IsAlert = Entry.Status == "alert"
             EmptyLabel.Visible = false
             if AddToTop then NextTopOrder -= 1 else NextBottomOrder += 1 end
             local Slot = New("Frame", {
                 BackgroundTransparency = 1,
                 LayoutOrder = AddToTop and NextTopOrder or NextBottomOrder,
-                Size = UDim2.new(1, 0, 0, 58),
+                Size = UDim2.new(1, 0, 0, HasActions and 88 or 58),
                 Parent = HistoryContainer,
             })
             local Card = New("CanvasGroup", {
@@ -15015,6 +15035,29 @@ function Library:CreateWindow(WindowInfo)
                 TextYAlignment = Enum.TextYAlignment.Top,
                 Parent = Card,
             })
+            if HasActions then
+                local ActionRow = New("Frame", {
+                    BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 56),
+                    Size = UDim2.new(1, -16, 0, 24), Parent = Card,
+                })
+                New("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), Parent = ActionRow})
+                for _, Action in Entry.Actions do
+                    if type(Action) ~= "table" then continue end
+                    local Button = New("TextButton", {
+                        BackgroundColor3 = "BackgroundColor", Text = tostring(Action.Text or Action.Title or "action"),
+                        TextSize = 12, Size = UDim2.fromOffset(64, 24),
+                        Active = not Entry.ActionState.Resolved,
+                        AutoButtonColor = not Entry.ActionState.Resolved,
+                        TextTransparency = Entry.ActionState.Resolved and 0.55 or 0,
+                        Parent = ActionRow,
+                    })
+                    Library:AddOutline(Button)
+                    Entry.ActionState.Buttons[Button] = true
+                    Button.MouseButton1Click:Connect(function()
+                        Library:ResolveNotificationAction(Entry.ActionState, Action, Entry)
+                    end)
+                end
+            end
             table.insert(HistoryFrames, Slot)
 
             if AddToTop and Library.ActiveTab == Tab and Tab.Canvas.Visible then
