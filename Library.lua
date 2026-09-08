@@ -34,14 +34,7 @@ local Options = {}
 local Tooltips = {}
 
 local BaseURL = "https://raw.githubusercontent.com/deividcomsono/Obsidian/refs/heads/main/"
-local BrandIcons = {
-    "https://www.image2url.com/r2/default/images/1784791531614-2d8c3d34-9b31-4b0d-9650-bc33e87dc50d.jpg",
-    "https://www.image2url.com/r2/default/images/1784791553779-42b1dcf0-e9f3-452e-8644-7ac568e5fa48.jpg",
-    "https://www.image2url.com/r2/default/images/1785789718586-b845f165-0855-40ab-b42a-cdd6f4f33374.png",
-    "https://www.image2url.com/r2/default/images/1785789736595-37a7cb74-5828-4011-a885-0d3ccf1848c9.jpg",
-    "https://www.image2url.com/r2/default/images/1785789741226-08b5f688-55d9-4577-ad53-71bf412dbbd0.jpg",
-}
-local SelectedBrandIcon
+local BrandIcon = "https://www.image2url.com/r2/default/images/1788828127765-32a1867c-8ec2-4d2e-a9bf-da43495077c2.jpg"
 local CustomImageManager = {}
 local CustomImageManagerAssets = {
     TransparencyTexture = {
@@ -458,13 +451,13 @@ local Templates = {
 
     --// Library \\--
     Window = {
-        Title = "slimekrew",
+        Title = "hitechy",
         Footer = "No Footer",
 
         Position = UDim2.fromOffset(6, 6),
         Size = UDim2.fromOffset(760, 720),
         IconSize = UDim2.fromOffset(30, 30),
-        RandomizeIcon = true,
+        RandomizeIcon = false,
 
         AutoShow = true,
         Center = true,
@@ -531,10 +524,10 @@ local Templates = {
         FooterButtons = {}
     },
     Loading = {
-        Title = "HitechHub",
+        Title = "hitechy",
         Icon = 95816097006870,
         IconSize = UDim2.fromOffset(30, 30),
-        RandomizeIcon = true,
+        RandomizeIcon = false,
 
         LoadingIcon = CustomImageManager.GetAsset("LoadingIcon"),
         LoadingIconColor = nil,
@@ -1611,23 +1604,16 @@ function Library:GetThemes()
     return Names
 end
 
-Library.BrandIcons = BrandIcons
+Library.BrandIcons = { BrandIcon }
+Library.SelectedBrandIcon = BrandIcon
 
+function Library:GetBrandIcon()
+    return BrandIcon
+end
+
+--// compatibility for scripts using the previous branding API
 function Library:GetRandomBrandIcon()
-    if not SelectedBrandIcon then
-        local Environment = getgenv()
-        local SharedIcon = type(Environment) == "table" and Environment.HitechHubBrandIcon or nil
-        if type(SharedIcon) == "string" and table.find(BrandIcons, SharedIcon) then
-            SelectedBrandIcon = SharedIcon
-        else
-            SelectedBrandIcon = BrandIcons[math.random(1, #BrandIcons)]
-            if type(Environment) == "table" then
-                Environment.HitechHubBrandIcon = SelectedBrandIcon
-            end
-        end
-        Library.SelectedBrandIcon = SelectedBrandIcon
-    end
-    return SelectedBrandIcon
+    return Library:GetBrandIcon()
 end
 
 function Library:SetSchemeColor(Name, Value)
@@ -1689,6 +1675,7 @@ function Library:SetTheme(Name)
         end
     end
     Library.ActiveTheme = Name
+    if Library.SelectedFont then Library.Scheme.Font = Library.SelectedFont end
     local Background = Library.Scheme.BackgroundColor
     Library.IsLightTheme = Background.R * 0.299 + Background.G * 0.587 + Background.B * 0.114 > 0.55
     local TargetScheme = table.clone(Library.Scheme)
@@ -1990,7 +1977,7 @@ local function ParentUI(UI: Instance, SkipHiddenUI: boolean?)
 end
 
 local ScreenGui = New("ScreenGui", {
-    Name = "HitechHub",
+    Name = "hitechy",
     DisplayOrder = 998,
     ResetOnSpawn = false,
 })
@@ -9278,6 +9265,7 @@ function Library:SetFont(FontFace)
     end
 
     Library.Scheme.Font = FontFace
+    Library.SelectedFont = FontFace
     Library:UpdateColorsUsingRegistry()
 end
 
@@ -9833,7 +9821,8 @@ local function UnpackProfileValue(Value)
 end
 
 function Library:SetProfileFolder(Folder)
-    Library.ProfileFolder = tostring(Folder or "Potas/profiles")
+    Library.ProfileFolder = tostring(Folder or "hitechy/profiles")
+    Library.ProfileFolder = Library.ProfileFolder:gsub("\\", "/"):gsub("^[Pp][Oo][Tt][Aa][Ss]/", "hitechy/")
     if makefolder then
         local Current = ""
         for _, Segment in ipairs(Library.ProfileFolder:gsub("\\", "/"):split("/")) do
@@ -9841,12 +9830,28 @@ function Library:SetProfileFolder(Folder)
             if not isfolder or not isfolder(Current) then pcall(makefolder, Current) end
         end
     end
+    --// copy legacy profiles once without replacing existing hitechy profiles
+    if Library.ProfileFolder:sub(1, 8) == "hitechy/" and listfiles and isfolder and isfile and readfile and writefile then
+        local LegacyFolder = "Potas/" .. Library.ProfileFolder:sub(9)
+        pcall(function()
+            if not isfolder(LegacyFolder) then return end
+            for _, Path in ipairs(listfiles(LegacyFolder)) do
+                local Name = Path:gsub("\\", "/"):match("([^/]+)$")
+                if Name and (Name:match("%.json$") or Name == "autoload.txt") then
+                    local Destination = Library.ProfileFolder .. "/" .. Name
+                    if isfile(Path) and not isfile(Destination) then
+                        pcall(function() writefile(Destination, readfile(Path)) end)
+                    end
+                end
+            end
+        end)
+    end
     return Library.ProfileFolder
 end
 
 function Library:GetProfiles()
     local Profiles = {}
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     if listfiles then
         local Success, Files = pcall(listfiles, Folder)
         if Success then
@@ -9914,20 +9919,20 @@ end
 function Library:SaveProfile(Name)
     Name = tostring(Name or ""):gsub("[^%w%-_]", "")
     if Name == "" or not writefile then return false, "invalid profile name" end
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Success, Error = pcall(writefile, Folder .. "/" .. Name .. ".json", Library:ExportProfile())
     return Success, Success and Name or Error
 end
 
 function Library:LoadProfile(Name)
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Path = Folder .. "/" .. tostring(Name) .. ".json"
     if not (readfile and isfile and isfile(Path)) then return false, "profile not found" end
     return Library:ImportProfile(readfile(Path))
 end
 
 function Library:GetLatestConfigPath()
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     return Folder .. "/latest.json"
 end
 
@@ -9949,7 +9954,7 @@ function Library:LoadLatestConfig()
 end
 
 function Library:DeleteProfile(Name)
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Path = Folder .. "/" .. tostring(Name) .. ".json"
     if not (delfile and isfile and isfile(Path)) then return false end
     return pcall(delfile, Path)
@@ -9964,7 +9969,7 @@ function Library:RenameProfile(OldName, NewName)
 end
 
 function Library:DuplicateProfile(Name, NewName)
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Source = Folder .. "/" .. tostring(Name) .. ".json"
     if not (readfile and isfile and isfile(Source) and writefile) then return false end
     NewName = tostring(NewName or (tostring(Name) .. "_copy")):gsub("[^%w%-_]", "")
@@ -9972,13 +9977,13 @@ function Library:DuplicateProfile(Name, NewName)
 end
 
 function Library:SetAutoloadProfile(Name)
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     if not writefile then return false end
     return pcall(writefile, Folder .. "/autoload.txt", tostring(Name or ""))
 end
 
 function Library:GetAutoloadProfile()
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Path = Folder .. "/autoload.txt"
     if not (readfile and isfile and isfile(Path)) then return nil end
     local Success, Name = pcall(readfile, Path)
@@ -9987,7 +9992,7 @@ function Library:GetAutoloadProfile()
 end
 
 function Library:LoadAutoloadProfile()
-    local Folder = Library.ProfileFolder or Library:SetProfileFolder("Potas/profiles")
+    local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Path = Folder .. "/autoload.txt"
     if not (readfile and isfile and isfile(Path)) then return false end
     local Name = readfile(Path)
@@ -9996,9 +10001,10 @@ end
 
 function Library:CreateWindow(WindowInfo)
     WindowInfo = Library:Validate(WindowInfo, Templates.Window)
-    if WindowInfo.RandomizeIcon ~= false then
-        WindowInfo.Icon = Library:GetRandomBrandIcon()
+    if tostring(WindowInfo.Title):lower():gsub("%s+", "") == "slimekrew" or tostring(WindowInfo.Title):lower():gsub("%s+", "") == "hitechhub" then
+        WindowInfo.Title = "hitechy"
     end
+    WindowInfo.Icon = Library:GetBrandIcon()
     local ViewportSize: Vector2 = workspace.CurrentCamera.ViewportSize
     if RunService:IsStudio() and ViewportSize.X <= 5 and ViewportSize.Y <= 5 then
         repeat
@@ -10889,6 +10895,8 @@ function Library:CreateWindow(WindowInfo)
 
     function Window:ChangeTitle(title)
         assert(typeof(title) == "string", "Expected string for title got: " .. typeof(title))
+        local Brand = title:lower():gsub("%s+", "")
+        if Brand == "slimekrew" or Brand == "hitechhub" then title = "hitechy" end
 
         WindowTitle.Text = title
         WindowTitle.Size = UDim2.new(0, Library:GetTextBounds(
@@ -14169,10 +14177,8 @@ function Library:CreateWindow(WindowInfo)
         local UsernameLabel = Status:AddLabel("User: " .. LocalPlayer.Name)
         local GameLabel = Status:AddLabel("Current Game: Loading")
         local ExecutorLabel = Status:AddLabel("Executor: Unknown")
-        local RankLabel = Access:AddLabel("Rank: Not linked")
         local HwidLabel = Access:AddLabel("HWID: Loading")
         local KeyLabel = Access:AddLabel("Key / Whitelist: Not linked")
-        local PlanLabel = Access:AddLabel("Plan: None")
         local ExpiryLabel = Access:AddLabel("Time Remaining: N/A")
         local Account = {
             Tab = AccountTab,
@@ -14226,9 +14232,7 @@ function Library:CreateWindow(WindowInfo)
             local Hwid = Linked and type(LP_FINGERPRINT) == "string" and LP_FINGERPRINT or DetectHwid()
             local Digits = Hwid:gsub("%D", ""):sub(1, 2)
             HwidLabel:SetText("HWID: " .. (Digits ~= "" and Digits or "--") .. "***")
-            RankLabel:SetText("Rank: " .. (Linked and (LP_PREMIUM == true and "Premium" or "Standard") or "Not linked"))
             KeyLabel:SetText("Key / Whitelist: " .. (Linked and "Authenticated" or "Not linked"))
-            PlanLabel:SetText("Plan: " .. (Linked and (LP_PREMIUM == true and "Premium" or "Ad / Free") or "None"))
             local Remaining = Linked and tonumber(LP_TIMELEFT) or nil
             local Expiry = "N/A"
             if Remaining then
@@ -14378,7 +14382,7 @@ function Library:CreateWindow(WindowInfo)
     function Window:AddSettingsTab(Info)
         Info = Info or {}
         local Prefix = Info.Prefix or "Library"
-        Library:SetProfileFolder(Info.ProfileFolder or ("Potas/" .. tostring(game.PlaceId) .. "/profiles"))
+        Library:SetProfileFolder(Info.ProfileFolder or ("hitechy/" .. tostring(game.PlaceId) .. "/profiles"))
         if not Library.LatestConfigRegistered then
             Library.LatestConfigRegistered = true
             Library:OnUnload(function()
@@ -14532,7 +14536,7 @@ function Library:CreateWindow(WindowInfo)
                 Text = "Test Notification",
                 Func = function()
                     Library:Notify({
-                        Title = "slimekrew",
+                        Title = "hitechy",
                         Description = "Notifications are working",
                         Time = 3,
                     })
@@ -14712,10 +14716,10 @@ function Library:CreateWindow(WindowInfo)
             Default = WindowInfo.Title,
             Finished = true,
             ClearTextOnFocus = false,
-            Placeholder = "slimekrew",
+            Placeholder = "hitechy",
             Callback = function(Value)
                 local Header = Trim(tostring(Value))
-                Window:ChangeTitle(Header ~= "" and Header or "slimekrew")
+                Window:ChangeTitle(Header ~= "" and Header or "hitechy")
             end,
         })
         StudioLayout:AddInput(Prefix .. "HeaderIcon", {
@@ -14738,10 +14742,11 @@ function Library:CreateWindow(WindowInfo)
             Suffix = "px",
             Callback = function(Value) Window:SetSidebarWidth(Value) end,
         })
-        StudioLayout:AddDropdown(Prefix .. "InterfaceFont", {
-            Text = "Interface Font",
-            Values = { "Code", "Gotham", "SourceSans", "RobotoMono" },
-            Default = "Code",
+        Themes:AddDropdown(Prefix .. "InterfaceFont", {
+            Text = "Font",
+            Tooltip = "Changes the menu font and saves it with your profile.",
+            Values = { "Arial", "Code", "Gotham", "SourceSans", "RobotoMono", "Roboto", "Ubuntu", "Garamond", "Arcade", "SciFi" },
+            Default = "Arial",
             Callback = function(Value)
                 local FontValue = Enum.Font[Value]
                 if FontValue then Library:SetFont(FontValue) end
@@ -15769,9 +15774,7 @@ function Library:CreateLoading(LoadingInfo)
     end
 
     LoadingInfo = Library:Validate(LoadingInfo, Templates.Loading)
-    if LoadingInfo.RandomizeIcon ~= false then
-        LoadingInfo.Icon = Library:GetRandomBrandIcon()
-    end
+    LoadingInfo.Icon = Library:GetBrandIcon()
     local RequestedSidebar = false
 
     local Loading = {
