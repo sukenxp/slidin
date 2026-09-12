@@ -6827,6 +6827,12 @@ do
             end
         end
 
+        --// button actions can commit visible text before focus/change events arrive
+        function Input:Commit()
+            Input:SetValue(Box.Text)
+            return Input.Value
+        end
+
         function Input:SetDisabled(Disabled: boolean)
             Input.Disabled = Disabled
 
@@ -14905,7 +14911,7 @@ function Library:CreateWindow(WindowInfo)
         end
 
         Profiles:AddButton({ Text = "Save", Func = function()
-            local Name = Options[Prefix .. "ProfileName"].Value
+            local Name = Options[Prefix .. "ProfileName"]:Commit()
             local Success, Result = Library:SaveProfile(Name)
             RefreshProfiles(Success and Result or nil)
             Library:Notify({ Title = "Profiles", Description = Success and ("Saved " .. Result) or tostring(Result), Time = 3 })
@@ -14923,7 +14929,7 @@ function Library:CreateWindow(WindowInfo)
         end })
         Profiles:AddButton({ Text = "Rename", Func = function()
             local OldName = Options[Prefix .. "ProfileList"].Value
-            local NewName = Options[Prefix .. "ProfileName"].Value
+            local NewName = Options[Prefix .. "ProfileName"]:Commit()
             local WasAutoload = Library:GetAutoloadProfile() == OldName
             local Success = Library:RenameProfile(OldName, NewName)
             if Success and WasAutoload then Library:SetAutoloadProfile(NewName) end
