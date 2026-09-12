@@ -193,8 +193,8 @@ local Library = {
     GradientDirection = "Back and forth",
     GradientCycleStarted = os.clock(),
     GradientConnection = nil,
-    MainMenuGradientEnabled = true,
-    MainMenuGradientMode = "Custom",
+    MainMenuGradientEnabled = false,
+    MainMenuGradientMode = "No Gradient",
     MainMenuGradientStart = Color3.fromRGB(27, 28, 33),
     MainMenuGradientEnd = Color3.fromRGB(48, 50, 57),
     MainMenuGradientDirection = "Back and forth",
@@ -14477,13 +14477,11 @@ function Library:CreateWindow(WindowInfo)
             Default = Library.GradientDirection,
             Callback = function(Value)
                 Library:SetGradientDirection(Value)
-                Library:SetMainMenuGradient({Mode = "Custom", Direction = Value})
+                Library:SetMainMenuGradient({Direction = Value})
                 local Accent = Options[Prefix .. "GradientDirection"]
                 local Menu = Options[Prefix .. "MainMenuGradientDirection"]
-                local Mode = Options[Prefix .. "MainMenuGradientMode"]
                 if Accent and Accent.Value ~= Value then Accent:SetValue(Value) end
                 if Menu and Menu.Value ~= Value then Menu:SetValue(Value) end
-                if Mode and Mode.Value ~= "Custom" then Mode:SetValue("Custom") end
             end,
         })
         --// theme studio: fixed caption, category tabs, one scrollable page
@@ -14683,12 +14681,11 @@ function Library:CreateWindow(WindowInfo)
             Callback = function(Value) Library:SetGradientDirection(Value) end,
         })
         StudioGradient:AddDivider("menu gradient")
-        StudioGradient:AddDropdown(Prefix .. "MainMenuGradientMode", {
-            Text = "Main Menu Gradient",
-            Values = { "Default", "Custom", "No Gradient" },
-            Default = Library.MainMenuGradientMode,
+        StudioGradient:AddToggle(Prefix .. "MainMenuGradientEnabled", {
+            Text = "Enable menu gradient",
+            Default = false,
             Callback = function(Value)
-                Library:SetMainMenuGradient({ Mode = Value })
+                Library:SetMainMenuGradient({Mode = Value and "Custom" or "No Gradient"})
             end,
         })
         StudioGradient:AddLabel("Menu Gradient Start"):AddColorPicker(Prefix .. "MainMenuGradientStart", {
