@@ -14882,7 +14882,7 @@ function Library:CreateWindow(WindowInfo)
         Profiles:AddInput(Prefix .. "ProfileName", {
             Text = "Profile Name",
             Placeholder = "Profile name",
-            Finished = true,
+            Finished = false,
         })
         SelectedProfileLabel = Profiles:AddLabel("Selected: " .. tostring(ProfileNames[1]))
         AutoloadProfileLabel = Profiles:AddLabel("Autoload: " .. tostring(Library:GetAutoloadProfile() or "None"))
