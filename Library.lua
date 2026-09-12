@@ -190,14 +190,14 @@ local Library = {
     FixedGradients = {},
     DarkGradients = {},
     GradientCycleDuration = 4,
-    GradientDirection = "Static",
+    GradientDirection = "Back and forth",
     GradientCycleStarted = os.clock(),
     GradientConnection = nil,
-    MainMenuGradientEnabled = false,
-    MainMenuGradientMode = "No Gradient",
+    MainMenuGradientEnabled = true,
+    MainMenuGradientMode = "Custom",
     MainMenuGradientStart = Color3.fromRGB(27, 28, 33),
     MainMenuGradientEnd = Color3.fromRGB(48, 50, 57),
-    MainMenuGradientDirection = "Static",
+    MainMenuGradientDirection = "Back and forth",
     MainMenuGradientSpeed = 6,
     MainMenuGradientRotation = 115,
     MainMenuGradientTransparency = 0.22,
@@ -14472,6 +14472,20 @@ function Library:CreateWindow(WindowInfo)
             InterfaceBox.Tabs.Gradient = nil
         end
         local Themes = InterfaceBox:AddTab("Themes")
+        Themes:AddDropdown(Prefix .. "GradientAnimation", {
+            Text = "Gradient animation", Values = {"Back and forth", "Right", "Left", "Static"},
+            Default = Library.GradientDirection,
+            Callback = function(Value)
+                Library:SetGradientDirection(Value)
+                Library:SetMainMenuGradient({Mode = "Custom", Direction = Value})
+                local Accent = Options[Prefix .. "GradientDirection"]
+                local Menu = Options[Prefix .. "MainMenuGradientDirection"]
+                local Mode = Options[Prefix .. "MainMenuGradientMode"]
+                if Accent and Accent.Value ~= Value then Accent:SetValue(Value) end
+                if Menu and Menu.Value ~= Value then Menu:SetValue(Value) end
+                if Mode and Mode.Value ~= "Custom" then Mode:SetValue("Custom") end
+            end,
+        })
         --// theme studio: fixed caption, category tabs, one scrollable page
         local StudioHolder, StudioContainer = Library:AddDraggableMenu("Theme Studio")
         StudioHolder.AutomaticSize = Enum.AutomaticSize.None
