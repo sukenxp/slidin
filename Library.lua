@@ -3042,18 +3042,33 @@ function Library:AddDraggableImageButton(...)
     return DraggableImageButton
 end
 
---// Watermark - Deprecated \\--
-do
-    local WatermarkLabel = Library:AddDraggableLabel("")
-    WatermarkLabel:SetVisible(false)
-
+--// compact live watermark
+ do
+    local WatermarkLabel = Library:AddDraggableLabel("hitechy  |  starting?")
+    WatermarkLabel.Label.Position = UDim2.fromOffset(58, 18)
+    WatermarkLabel.Label.BackgroundTransparency = 0.08
+    WatermarkLabel.Label.TextSize = 12
+    local Corner = WatermarkLabel.Label:FindFirstChildOfClass("UICorner")
+    if Corner then Corner.CornerRadius = UDim.new(0, 9) end
+    local Started, Elapsed, Frames = os.clock(), 0, 0
+    local Custom = false
+    Library:GiveSignal(RunService.RenderStepped:Connect(function(dt)
+        Elapsed += dt; Frames += 1
+        if Elapsed < 1 then return end
+        if not Custom then
+            local Player = game:GetService("Players").LocalPlayer
+            local Ping = 0
+            pcall(function() Ping = math.floor(Player:GetNetworkPing() * 1000 + 0.5) end)
+            local Seconds = math.floor(os.clock() - Started)
+            WatermarkLabel:SetText(string.format("hitechy  |  %d fps  |  %d ms  |  %02d:%02d:%02d  |  %s",
+                math.floor(Frames / Elapsed + 0.5), Ping, math.floor(Seconds / 3600), math.floor(Seconds / 60) % 60, Seconds % 60, Player.Name))
+        end
+        Elapsed, Frames = 0, 0
+    end))
     function Library:SetWatermark(Text: string)
-        warn("Watermark is deprecated, please use Library:AddDraggableLabel instead.")
-        WatermarkLabel:SetText(Text)
+        Custom = true; WatermarkLabel:SetText(Text)
     end
-
     function Library:SetWatermarkVisibility(Visible: boolean)
-        warn("Watermark is deprecated, please use Library:AddDraggableLabel instead.")
         WatermarkLabel:SetVisible(Visible)
     end
 end
@@ -3879,8 +3894,8 @@ do
             local Holder = New("TextButton", {
                 AutoButtonColor = false,
                 BackgroundColor3 = "MainColor",
-                BackgroundTransparency = 0.32,
-                Size = UDim2.new(1, 0, 0, 28),
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 22),
                 Text = "",
                 Visible = not Info.NoUI,
                 Parent = Library.KeybindContainer,
@@ -3891,15 +3906,16 @@ do
             }))
             New("UIStroke", {
                 Color = "OutlineColor",
-                Transparency = 0.45,
+                Transparency = 1,
                 Parent = Holder,
             })
 
             local Label = New("TextLabel", {
-                AutomaticSize = Enum.AutomaticSize.X,
+                AutomaticSize = Enum.AutomaticSize.None,
                 BackgroundTransparency = 1,
-                Position = UDim2.fromOffset(9, 0),
-                Size = UDim2.new(1, -42, 1, 0),
+                Position = UDim2.fromOffset(54, 0),
+                Size = UDim2.new(1, -112, 1, 0),
+                TextTruncate = Enum.TextTruncate.AtEnd,
                 Text = "",
                 TextSize = 12,
                 TextTransparency = 0.5,
@@ -3938,13 +3954,21 @@ do
                 Parent = Checkbox,
             })
 
+            local ModeLabel = New("TextLabel", {BackgroundTransparency = 1, Position = UDim2.fromOffset(8, 0),
+                Size = UDim2.new(0, 44, 1, 0), TextSize = 11, TextColor3 = "AccentColor", TextXAlignment = Enum.TextXAlignment.Left, Parent = Holder})
+            local KeyLabel = New("TextLabel", {BackgroundTransparency = 1, Position = UDim2.new(1, -56, 0, 0),
+                Size = UDim2.new(0, 48, 1, 0), TextSize = 11, TextColor3 = "AccentColor", TextXAlignment = Enum.TextXAlignment.Right,
+                TextTruncate = Enum.TextTruncate.AtEnd, Parent = Holder})
+            Checkbox.Visible = false
             function KeybindsToggle:Display(State)
                 Label.TextTransparency = State and 0 or 0.5
                 CheckImage.ImageTransparency = State and 0 or 1
             end
 
             function KeybindsToggle:SetText(Text)
-                Label.Text = Text
+                Label.Text = KeyPicker.Text
+                ModeLabel.Text = KeyPicker.Mode
+                KeyLabel.Text = KeyPicker.DisplayValue
             end
 
             function KeybindsToggle:SetVisibility(Visibility)
@@ -3955,8 +3979,8 @@ do
                 KeybindsToggle.Normal = Normal
 
                 Holder.Active = not Normal
-                Label.Position = UDim2.fromOffset(9, 0)
-                Checkbox.Visible = not Normal
+                Label.Position = UDim2.fromOffset(54, 0)
+                Checkbox.Visible = false
             end
 
             KeyPicker.DoClick = function(...) end --// make luau lsp shut up
@@ -10114,9 +10138,9 @@ function Library:CreateWindow(WindowInfo)
     local LastExpandedWidth = InitialLeftWidth
 
     do
-        Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Keybinds")
-        Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0.5)
-        Library.KeybindFrame.Position = UDim2.new(0, 6, 0.5, 0)
+        Library.KeybindFrame, Library.KeybindContainer = Library:AddDraggableMenu("Hotkeys")
+        Library.KeybindFrame.AnchorPoint = Vector2.new(0, 0)
+        Library.KeybindFrame.Position = UDim2.fromOffset(58, 64)
         Library.KeybindFrame.AutomaticSize = Enum.AutomaticSize.None
         Library.KeybindFrame.Size = UDim2.fromOffset(244, 70)
         Library.KeybindFrame.BackgroundTransparency = 0.04
@@ -14784,7 +14808,7 @@ function Library:CreateWindow(WindowInfo)
         if not Toggles.Watermark and not Toggles.Overlay then
             Interface:AddToggle("Watermark", {
                 Text = "Watermark",
-                Default = false,
+                Default = true,
                 Callback = function(Value)
                     for _, Watermark in Library.WatermarkLabels or {} do
                         if not Watermark.Destroyed then Watermark:SetVisible(Value) end
