@@ -285,7 +285,8 @@ local Library = {
     NotificationHistoryListeners = {},
     NotifySide = "Right",
     NotifyTweenInfo = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-    NotifySound1 = false,
+    NotifySound1 = true,
+    NotifySoundId = "139308638407157",
     NotifySound2 = false,
 
     --// Dialogues \\--
@@ -1743,8 +1744,9 @@ function Library:SetGradientSpeed(Duration)
 end
 
 function Library:SetGradientDirection(Direction)
-    local Valid = { PingPong = true, Left = true, Right = true, Static = true }
-    Library.GradientDirection = Valid[Direction] and Direction or "PingPong"
+    if Direction == "PingPong" then Direction = "Back and forth" end
+    local Valid = { ["Back and forth"] = true, Left = true, Right = true, Static = true }
+    Library.GradientDirection = Valid[Direction] and Direction or "Back and forth"
     if Library.GradientDirection == "Static" then
         for _, Collection in {Library.AccentGradients, Library.FixedGradients, Library.DarkGradients} do
             for _, Gradient in Collection do
@@ -1756,7 +1758,8 @@ function Library:SetGradientDirection(Direction)
 end
 
 function Library:SetMainMenuGradient(Info)
-    Info = Info or {}
+    Info = table.clone(Info or {})
+    if Info.Direction == "PingPong" then Info.Direction = "Back and forth" end
     local OldStart = Library.MainMenuGradientStart
     local OldEnd = Library.MainMenuGradientEnd
     if typeof(Info.Start) == "Color3" then Library.MainMenuGradientStart = Info.Start end
@@ -1769,7 +1772,7 @@ function Library:SetMainMenuGradient(Info)
     if tonumber(Info.Speed) then Library.MainMenuGradientSpeed = math.clamp(tonumber(Info.Speed), 0.25, 20) end
     if tonumber(Info.Rotation) then Library.MainMenuGradientRotation = math.clamp(tonumber(Info.Rotation), 0, 360) end
     if tonumber(Info.Transparency) then Library.MainMenuGradientTransparency = math.clamp(tonumber(Info.Transparency), 0, 1) end
-    if table.find({ "Static", "Left", "Right", "PingPong" }, Info.Direction) then
+    if table.find({ "Static", "Left", "Right", "Back and forth" }, Info.Direction) then
         Library.MainMenuGradientDirection = Info.Direction
     end
     Library.MainMenuGradientStarted = os.clock()
@@ -2623,7 +2626,8 @@ function Library:AddDraggableLabel(...)
 
     function DraggableLabel:SetText(Text: string)
         Label.Text = Text
-        Label.Visible = DraggableLabel.VisibleRequested and Trim(Text) ~= ""
+        if Trim(Text) == "" then Label.Visible = false
+        elseif DraggableLabel.VisibleRequested then Label.Visible = true end
     end
 
     function DraggableLabel:SetIcon(NewIcon: string)
@@ -2684,11 +2688,27 @@ function Library:AddDraggableLabel(...)
     end
 
     function DraggableLabel:SetVisible(Visible: boolean)
-        DraggableLabel.VisibleRequested = Visible == true
-        Label.Visible = DraggableLabel.VisibleRequested and Trim(Label.Text) ~= ""
-        Label.BackgroundTransparency = 0
-        Label.TextTransparency = 0
-        LabelScale.Scale = Library.DPIScale
+        local Show = Visible == true and Trim(Label.Text) ~= ""
+        if DraggableLabel.VisibleRequested == Show and Label.Visible == Show then return end
+        DraggableLabel.VisibleRequested = Show
+        DraggableLabel.FadeGeneration = (DraggableLabel.FadeGeneration or 0) + 1
+        local Generation = DraggableLabel.FadeGeneration
+        for _, Tween in DraggableLabel.FadeTweens or {} do Tween:Cancel() end
+        DraggableLabel.FadeTweens = {}
+        if Show and not Label.Visible then Label.TextTransparency = 1; Label.BackgroundTransparency = 1 end
+        Label.Visible = true
+        local function Fade(Object, Properties)
+            local Tween = TweenService:Create(Object, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), Properties)
+            table.insert(DraggableLabel.FadeTweens, Tween); Tween:Play()
+        end
+        Fade(Label, {TextTransparency = Show and 0 or 1, BackgroundTransparency = Show and 0.08 or 1})
+        for _, Object in Label:GetDescendants() do
+            if Object:IsA("UIStroke") then Fade(Object, {Transparency = Show and 0.25 or 1})
+            elseif Object:IsA("ImageLabel") then Fade(Object, {ImageTransparency = Show and 0 or 1}) end
+        end
+        task.delay(0.22, function()
+            if not DraggableLabel.Destroyed and Generation == DraggableLabel.FadeGeneration and not Show then Label.Visible = false end
+        end)
     end
 
     DraggableLabel:SetIcon(Icon)
@@ -8052,6 +8072,7 @@ do
         end
 
         function Dropdown:SetValue(Value)
+            if Value == "PingPong" and table.find(Dropdown.Values, "Back and forth") then Value = "Back and forth" end
             if Info.Multi then
                 local Table = {}
 				
@@ -9777,7 +9798,7 @@ function Library:Notify(...)
         }):Destroy()
     else
         for _, SoundInfo in {
-            { Enabled = Library.NotifySound1, Id = 139308638407157 },
+            { Enabled = Library.NotifySound1, Id = tonumber(Library.NotifySoundId) or 139308638407157 },
             { Enabled = Library.NotifySound2, Id = 117653664939966 },
         } do
             if SoundInfo.Enabled then
@@ -14549,9 +14570,14 @@ function Library:CreateWindow(WindowInfo)
                 Expanded = false,
                 Spacing = 8,
             })
+            NotificationSounds:AddInput(Prefix .. "NotifySoundId", {Text = "Sound 1 audio ID", Default = Library.NotifySoundId,
+                Finished = false, Placeholder = "Roblox audio ID", Callback = function(Value)
+                    local Id = tostring(Value):match("^%d+$") or tostring(Value):match("^rbxassetid://(%d+)$")
+                    Library.NotifySoundId = Id or "139308638407157"
+                end})
             NotificationSounds:AddToggle(Prefix .. "NotifySound1", {
                 Text = "Sound 1",
-                Default = false,
+                Default = true,
                 Callback = function(Value)
                     Library.NotifySound1 = Value
                     if Value then
@@ -14637,8 +14663,8 @@ function Library:CreateWindow(WindowInfo)
             Callback = function(Value) Library:SetGradientSpeed(Value) end,
         })
         StudioGradient:AddDropdown(Prefix .. "GradientDirection", {
-            Text = "Gradient Direction",
-            Values = { "PingPong", "Left", "Right", "Static" },
+            Text = "Gradient animation",
+            Values = { "Back and forth", "Right", "Left", "Static" },
             Default = Library.GradientDirection,
             Callback = function(Value) Library:SetGradientDirection(Value) end,
         })
@@ -14664,8 +14690,8 @@ function Library:CreateWindow(WindowInfo)
             end,
         })
         StudioGradient:AddDropdown(Prefix .. "MainMenuGradientDirection", {
-            Text = "Menu Gradient Direction",
-            Values = { "Static", "PingPong", "Left", "Right" },
+            Text = "Menu gradient animation",
+            Values = { "Back and forth", "Right", "Left", "Static" },
             Default = Library.MainMenuGradientDirection,
             Callback = function(Value)
                 Library:SetMainMenuGradient({ Direction = Value })
@@ -14831,7 +14857,7 @@ function Library:CreateWindow(WindowInfo)
                         if not Watermark.Destroyed then Watermark:SetVisible(Value) end
                     end
                     for _, Element in Library.DraggableElements do
-                        if Element:IsA("TextLabel") and Element.Text ~= "" and not table.find(Library.WatermarkLabels or {}, Element) then
+                        if Element:IsA("TextLabel") and Element.Text ~= "" and not (function() for _, Mark in Library.WatermarkLabels or {} do if Mark.Label == Element then return true end end return false end)() then
                             Element.Visible = Value
                         end
                     end
