@@ -3891,6 +3891,9 @@ do
 
         local KeybindsToggle = { Normal = KeyPicker.Mode ~= "Toggle" }
         do
+            local Row = New("CanvasGroup", {BackgroundTransparency = 1, GroupTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 0), Visible = false, ClipsDescendants = true, Parent = Library.KeybindContainer})
+            local RowTween, RowVisible
             local Holder = New("TextButton", {
                 AutoButtonColor = false,
                 BackgroundColor3 = "MainColor",
@@ -3898,7 +3901,7 @@ do
                 Size = UDim2.new(1, 0, 0, 22),
                 Text = "",
                 Visible = not Info.NoUI,
-                Parent = Library.KeybindContainer,
+                Parent = Row,
             })
             table.insert(Library.Corners, New("UICorner", {
                 CornerRadius = UDim.new(0, 5),
@@ -3972,7 +3975,20 @@ do
             end
 
             function KeybindsToggle:SetVisibility(Visibility)
-                Holder.Visible = Visibility
+                Visibility = Visibility == true and not Info.NoUI
+                if RowVisible == Visibility then return end
+                RowVisible = Visibility
+                if RowTween then RowTween:Cancel() end
+                if Visibility then Row.Visible = true end
+                RowTween = TweenService:Create(Row, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    GroupTransparency = Visibility and 0 or 1,
+                    Size = UDim2.new(1, 0, 0, Visibility and 24 or 0),
+                })
+                local Current = RowTween
+                Current.Completed:Once(function()
+                    if RowTween == Current and not RowVisible then Row.Visible = false end
+                end)
+                Current:Play()
             end
 
             function KeybindsToggle:SetNormal(Normal)
@@ -3993,7 +4009,7 @@ do
                 KeyPicker:DoClick()
             end)
 
-            KeybindsToggle.Holder = Holder
+            KeybindsToggle.Holder = Row
             KeybindsToggle.Label = Label
             KeybindsToggle.Checkbox = Checkbox
             KeybindsToggle.Loaded = true
@@ -4200,7 +4216,7 @@ do
                 end
 
                 KeybindsToggle:SetText(("[%s] %s (%s)"):format(KeyPicker.DisplayValue, KeyPicker.Text, KeyPicker.Mode))
-                KeybindsToggle:SetVisibility(true)
+                KeybindsToggle:SetVisibility(ParentObj.Type == "Toggle" and ParentObj.Value == true and not ParentObj.Disabled)
                 KeybindsToggle:Display(State)
             end
         end
@@ -10202,6 +10218,7 @@ function Library:CreateWindow(WindowInfo)
             Library.KeybindFrame.Size = UDim2.fromOffset(244, math.clamp(ContentHeight, 70, 420))
         end
         if KeybindList then
+            KeybindList.Padding = UDim.new(0, 0)
             Library:GiveSignal(KeybindList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(ResizeKeybindMenu))
             task.defer(ResizeKeybindMenu)
         end
