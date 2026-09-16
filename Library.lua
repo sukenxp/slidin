@@ -285,9 +285,11 @@ local Library = {
     NotificationHistoryListeners = {},
     NotifySide = "Right",
     NotifyTweenInfo = TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-    NotifySound1 = true,
+    NotifySound1 = false,
     NotifySoundId = "139308638407157",
     NotifySound2 = false,
+    NotifySound3 = true,
+    StartupSound = "Sound 1",
 
     --// Dialogues \\--
     Dialogues = {},
@@ -1701,6 +1703,8 @@ function Library:SetTheme(Name)
         end
     end)
     Library:SetGradientColors(Theme.GradientStart, Theme.GradientEnd)
+    for _, Toggle in pairs(Toggles) do if Toggle.UpdateColors then Toggle:UpdateColors() end end
+    if Library.Window and Library.Window.UpdateCaptionTheme then Library.Window:UpdateCaptionTheme() end
 
     for Instance, Properties in Library.Registry do
         if not Instance.Parent then
@@ -3065,6 +3069,10 @@ end
 --// compact live watermark
  do
     local WatermarkLabel = Library:AddDraggableLabel("hitechy  |  starting?")
+    WatermarkLabel.Label.Visible = false
+    Library:GiveSignal(WatermarkLabel.Label:GetPropertyChangedSignal("Visible"):Connect(function()
+        if Library.ActiveLoading then WatermarkLabel.Label.Visible = false end
+    end))
     WatermarkLabel.Label.Position = UDim2.fromOffset(58, 18)
     WatermarkLabel.Label.BackgroundTransparency = 0.08
     WatermarkLabel.Label.TextSize = 12
@@ -6260,6 +6268,13 @@ do
                 return
             end
 
+            if not Toggle.DefaultCheckImage then Toggle.DefaultCheckImage = CheckImage.Image end
+            local XP = Library.ActiveTheme == "Windows XP"
+            CheckImage.Image = XP and "rbxassetid://125604370229248" or Toggle.DefaultCheckImage
+            CheckImage.ImageRectOffset = not XP and CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero
+            CheckImage.ImageRectSize = not XP and CheckIcon and CheckIcon.ImageRectSize or Vector2.zero
+            Library.Registry[CheckImage].ImageColor3 = function() return Library.ActiveTheme == "Windows XP" and Color3.new(1, 1, 1) or Library.Scheme.FontColor end
+            CheckImage.ImageColor3 = XP and Color3.new(1, 1, 1) or Library.Scheme.FontColor
             CheckboxStroke.Transparency = Toggle.Disabled and 0.5 or 0
 
             if Toggle.Disabled then
@@ -6517,6 +6532,8 @@ do
             CornerRadius = UDim.new(0, 1),
             Parent = Ball,
         })
+        local XPCheck = New("ImageLabel", {BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+            Image = "rbxassetid://125604370229248", ImageTransparency = 1, Parent = Switch})
         AddAccentGradient(Ball, 0, NumberSequence.new(0.05))
         AddAccentGradient(SwitchStroke, 0, NumberSequence.new(0.18))
 
@@ -6529,6 +6546,10 @@ do
                 return
             end
 
+            local XP = Library.ActiveTheme == "Windows XP"
+            Ball.Visible = not XP
+            XPCheck.Visible = XP
+            TweenService:Create(XPCheck, Library.TweenInfo, {ImageTransparency = Toggle.Value and (Toggle.Disabled and 0.65 or 0) or 1}):Play()
             Switch.BackgroundTransparency = Toggle.Disabled and 0.75 or 0
             SwitchStroke.Transparency = Toggle.Disabled and 0.75 or 0
 
@@ -9800,6 +9821,7 @@ function Library:Notify(...)
         for _, SoundInfo in {
             { Enabled = Library.NotifySound1, Id = tonumber(Library.NotifySoundId) or 139308638407157 },
             { Enabled = Library.NotifySound2, Id = 117653664939966 },
+            { Enabled = Library.NotifySound3, Id = 97972687450528 },
         } do
             if SoundInfo.Enabled then
                 New("Sound", {
@@ -9983,11 +10005,19 @@ function Library:ImportProfile(Json)
     return true, Data
 end
 
+--// startup audio
+function Library:PlayStartupSound()
+    if Library.Unloaded then return end
+    New("Sound", {SoundId = "rbxassetid://" .. (Library.StartupSound == "Sound 2" and "134484570500666" or "78959439349986"),
+        Volume = 1, PlayOnRemove = true, Parent = SoundService}):Destroy()
+end
+
 function Library:SaveProfile(Name)
     Name = tostring(Name or ""):gsub("[^%w%-_]", "")
     if Name == "" or not writefile then return false, "invalid profile name" end
     local Folder = Library.ProfileFolder or Library:SetProfileFolder("hitechy/profiles")
     local Success, Error = pcall(writefile, Folder .. "/" .. Name .. ".json", Library:ExportProfile())
+    if Success then Library:PlayStartupSound() end
     return Success, Success and Name or Error
 end
 
@@ -13834,6 +13864,66 @@ function Library:CreateWindow(WindowInfo)
         end
     end
 
+    --// XP caption controls and taskbar restore
+    local XPControls = New("Frame", {BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(94, 28), Parent = TopBar})
+    local XPTaskbar = New("TextButton", {Text = "hitechy", TextSize = 16, TextColor3 = Color3.new(1, 1, 1),
+        BackgroundColor3 = Color3.fromRGB(35, 112, 222), BorderSizePixel = 0,
+        Position = UDim2.new(0, 20, 1, -42), Size = UDim2.fromOffset(180, 30), Visible = false, Parent = ScreenGui})
+    New("UICorner", {CornerRadius = UDim.new(0, 4), Parent = XPTaskbar})
+    New("UIStroke", {Color = Color3.fromRGB(155, 200, 255), Parent = XPTaskbar})
+    local SavedBounds, RestorePosition
+    local function CaptionButton(Index, Asset, Callback)
+        local Button = New("ImageButton", {BackgroundColor3 = Index == 3 and Color3.fromRGB(215, 74, 40) or Color3.fromRGB(44, 118, 220),
+            Image = Asset and "rbxassetid://" .. Asset or "", Size = UDim2.fromOffset(28, 28),
+            Position = UDim2.fromOffset((Index - 1) * 32, 0), Parent = XPControls})
+        New("UICorner", {CornerRadius = UDim.new(0, 4), Parent = Button})
+        New("UIStroke", {Color = Color3.new(1, 1, 1), Parent = Button})
+        Library:GiveSignal(Button.MouseButton1Click:Connect(Callback))
+        return Button
+    end
+    CaptionButton(1, "128380568689155", function()
+        if Fading or not Library.Toggled then return end
+        RestorePosition = MainFrame.Position
+        XPTaskbar.Visible = true
+        Window:Toggle(false)
+    end)
+    local Maximize = CaptionButton(2, nil, function()
+        if Fading then return end
+        if SavedBounds then
+            MainFrame.Position, MainFrame.Size = SavedBounds.Position, SavedBounds.Size
+            SavedBounds = nil
+        else
+            SavedBounds = {Position = MainFrame.Position, Size = MainFrame.Size}
+            local Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+            if Viewport then
+                MainFrame.Position = UDim2.fromOffset(8, 8)
+                MainFrame.Size = UDim2.fromOffset((Viewport.X - 16) / Library.DPIScale, (Viewport.Y - 16) / Library.DPIScale)
+            end
+        end
+    end)
+    local MaxGlyph = New("Frame", {BackgroundTransparency = 1, Position = UDim2.fromOffset(7, 7), Size = UDim2.fromOffset(14, 14), Parent = Maximize})
+    New("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 2, Parent = MaxGlyph})
+    CaptionButton(3, "104723246031864", function() Library:Unload() end)
+    Library:GiveSignal(XPTaskbar.MouseButton1Click:Connect(function()
+        if Fading then return end
+        XPTaskbar.Visible = false
+        local Destination = RestorePosition or MainFrame.Position
+        MainFrame.Position = Destination + UDim2.fromOffset(0, 65)
+        Window:Toggle(true)
+        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = Destination}):Play()
+    end))
+    function Window:UpdateCaptionTheme()
+        XPControls.Visible = Library.ActiveTheme == "Windows XP"
+        if not XPControls.Visible then XPTaskbar.Visible = false end
+    end
+    Window:UpdateCaptionTheme()
+    local OriginalToggle = Window.Toggle
+    function Window:Toggle(Value)
+        OriginalToggle(self, Value)
+        if Library.Toggled then XPTaskbar.Visible = false end
+    end
+
     function Library:Toggle(Value: boolean?)
         return Window:Toggle(Value)
     end
@@ -13928,6 +14018,7 @@ function Library:CreateWindow(WindowInfo)
     else
         Window:SetSidebarWidth(Tabs.Size.X.Offset)
     end
+    if not Library.ActiveLoading then Library:SetWatermarkVisibility(not Toggles.Watermark or Toggles.Watermark.Value) end
     if WindowInfo.AutoShow and not Library.ActiveLoading then
         task.spawn(Library.Toggle)
     end
@@ -14463,6 +14554,10 @@ function Library:CreateWindow(WindowInfo)
         local HadInterface = InterfaceBox.Tabs.Interface ~= nil
         local Interface = InterfaceBox.Tabs.Interface or InterfaceBox:AddTab("Interface")
         local Notifications = InterfaceBox.Tabs.Notifications or InterfaceBox:AddTab("Notifications")
+        local Startup = InterfaceBox.Tabs.Startup or InterfaceBox:AddTab("Startup")
+        Startup:AddDropdown(Prefix .. "StartupSound", {Text = "Startup sound", Values = {"Sound 1", "Sound 2"},
+            Default = Library.StartupSound, Callback = function(Value) Library.StartupSound = Value end})
+        Startup:AddButton({Text = "Test startup sound", Func = function() Library:PlayStartupSound() end})
         if InterfaceBox.Tabs.Themes then
             InterfaceBox.Tabs.Themes:Destroy()
             InterfaceBox.Tabs.Themes = nil
@@ -14587,30 +14682,25 @@ function Library:CreateWindow(WindowInfo)
                     local Id = tostring(Value):match("^%d+$") or tostring(Value):match("^rbxassetid://(%d+)$")
                     Library.NotifySoundId = Id or "139308638407157"
                 end})
-            NotificationSounds:AddToggle(Prefix .. "NotifySound1", {
-                Text = "Sound 1",
-                Default = true,
-                Callback = function(Value)
-                    Library.NotifySound1 = Value
-                    if Value then
-                        Library.NotifySound2 = false
-                        local Other = Toggles[Prefix .. "NotifySound2"]
-                        if Other and Other.Value then Other:SetValue(false) end
-                    end
-                end,
-            })
-            NotificationSounds:AddToggle(Prefix .. "NotifySound2", {
-                Text = "Sound 2",
-                Default = false,
-                Callback = function(Value)
-                    Library.NotifySound2 = Value
-                    if Value then
-                        Library.NotifySound1 = false
-                        local Other = Toggles[Prefix .. "NotifySound1"]
-                        if Other and Other.Value then Other:SetValue(false) end
-                    end
-                end,
-            })
+            for Index = 1, 3 do
+                local Key = "NotifySound" .. Index
+                NotificationSounds:AddToggle(Prefix .. Key, {
+                    Text = "Sound " .. Index, Default = Library[Key],
+                    Callback = function(Value)
+                        Library[Key] = Value
+                        if Value then
+                            for OtherIndex = 1, 3 do
+                                local OtherKey = "NotifySound" .. OtherIndex
+                                if OtherKey ~= Key then
+                                    Library[OtherKey] = false
+                                    local Other = Toggles[Prefix .. OtherKey]
+                                    if Other and Other.Value then Other:SetValue(false) end
+                                end
+                            end
+                        end
+                    end,
+                })
+            end
             Notifications:AddDropdown(Prefix .. "NotifySide", {
                 Text = "Notification Position",
                 Values = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" },
@@ -16563,13 +16653,9 @@ function Library:CreateLoading(LoadingInfo)
         SetBlur(false)
         Loading.Destroyed = true
         Library.ActiveLoading = nil
+        if not Library.Unloaded then Library:SetWatermarkVisibility(not Toggles.Watermark or Toggles.Watermark.Value) end
 
-        New("Sound", {
-            SoundId = "rbxassetid://78959439349986",
-            Volume = 1,
-            PlayOnRemove = true,
-            Parent = SoundService,
-        }):Destroy()
+        Library:PlayStartupSound()
 
         if Library.Toggle and Library.Toggled == false and Library.Unloaded ~= true then
             Library:Toggle(true)
@@ -16596,6 +16682,7 @@ function Library:CreateLoading(LoadingInfo)
     end
 
     Library.ActiveLoading = Loading
+    for _, Mark in Library.WatermarkLabels or {} do if not Mark.Destroyed then Mark.Label.Visible = false end end
     return Loading
 end
 
