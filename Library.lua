@@ -1447,13 +1447,45 @@ local function FillInstance(Table: { [string]: any }, Instance: GuiObject)
     end
 end
 
+--// bounded font sizing: fixed rows shrink text to fit, automatic rows retain layout sizing
+local FontLabels = setmetatable({}, {__mode = "k"})
+Library.FontSizeScale = 1
+local function ApplyFontSize(Object, Entry)
+    local Size = math.clamp(math.floor(Entry.Size * Library.FontSizeScale + 0.5), 8, 48)
+    if Entry.Constraint then
+        Entry.Constraint.MinTextSize = math.min(8, Size)
+        Entry.Constraint.MaxTextSize = Size
+    else
+        Object.TextSize = Size
+    end
+end
+function Library:SetFontSizeScale(Value)
+    Library.FontSizeScale = math.clamp(tonumber(Value) or 1, 0.75, 1.25)
+    for Object, Entry in pairs(FontLabels) do if Object.Parent then ApplyFontSize(Object, Entry) end end
+    for _, Option in pairs(Options) do
+        if Option.Type == "Dropdown" and Option.RecalculateListSize then Option:RecalculateListSize() end
+    end
+end
+
 local function New(ClassName: string, Properties: { [string]: any }): any
-    local Instance = Instance.new(ClassName)
+    local CreateInstance = Instance.new
+    local Instance = CreateInstance(ClassName)
 
     if Templates[ClassName] then
         FillInstance(Templates[ClassName], Instance)
     end
     FillInstance(Properties, Instance)
+    if Instance:IsA("TextLabel") or Instance:IsA("TextButton") or Instance:IsA("TextBox") then
+        local Entry = {Size = Instance.TextSize}
+        if not Instance.TextScaled and not Instance.TextWrapped and Instance.AutomaticSize == Enum.AutomaticSize.None then
+            local Constraint = CreateInstance("UITextSizeConstraint")
+            Constraint.Parent = Instance
+            Entry.Constraint = Constraint
+            Instance.TextScaled = true
+        end
+        FontLabels[Instance] = Entry
+        ApplyFontSize(Instance, Entry)
+    end
 
     if Properties["Parent"] and not Properties["ZIndex"] then
         pcall(function()
@@ -1704,7 +1736,6 @@ function Library:SetTheme(Name)
     end)
     Library:SetGradientColors(Theme.GradientStart, Theme.GradientEnd)
     for _, Toggle in pairs(Toggles) do if Toggle.UpdateColors then Toggle:UpdateColors() end end
-    if Library.Window and Library.Window.UpdateCaptionTheme then Library.Window:UpdateCaptionTheme() end
 
     for Instance, Properties in Library.Registry do
         if not Instance.Parent then
@@ -13864,66 +13895,6 @@ function Library:CreateWindow(WindowInfo)
         end
     end
 
-    --// XP caption controls and taskbar restore
-    local XPControls = New("Frame", {BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(94, 28), Parent = TopBar})
-    local XPTaskbar = New("TextButton", {Text = "hitechy", TextSize = 16, TextColor3 = Color3.new(1, 1, 1),
-        BackgroundColor3 = Color3.fromRGB(35, 112, 222), BorderSizePixel = 0,
-        Position = UDim2.new(0, 20, 1, -42), Size = UDim2.fromOffset(180, 30), Visible = false, Parent = ScreenGui})
-    New("UICorner", {CornerRadius = UDim.new(0, 4), Parent = XPTaskbar})
-    New("UIStroke", {Color = Color3.fromRGB(155, 200, 255), Parent = XPTaskbar})
-    local SavedBounds, RestorePosition
-    local function CaptionButton(Index, Asset, Callback)
-        local Button = New("ImageButton", {BackgroundColor3 = Index == 3 and Color3.fromRGB(215, 74, 40) or Color3.fromRGB(44, 118, 220),
-            Image = Asset and "rbxassetid://" .. Asset or "", Size = UDim2.fromOffset(28, 28),
-            Position = UDim2.fromOffset((Index - 1) * 32, 0), Parent = XPControls})
-        New("UICorner", {CornerRadius = UDim.new(0, 4), Parent = Button})
-        New("UIStroke", {Color = Color3.new(1, 1, 1), Parent = Button})
-        Library:GiveSignal(Button.MouseButton1Click:Connect(Callback))
-        return Button
-    end
-    CaptionButton(1, "128380568689155", function()
-        if Fading or not Library.Toggled then return end
-        RestorePosition = MainFrame.Position
-        XPTaskbar.Visible = true
-        Window:Toggle(false)
-    end)
-    local Maximize = CaptionButton(2, nil, function()
-        if Fading then return end
-        if SavedBounds then
-            MainFrame.Position, MainFrame.Size = SavedBounds.Position, SavedBounds.Size
-            SavedBounds = nil
-        else
-            SavedBounds = {Position = MainFrame.Position, Size = MainFrame.Size}
-            local Viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
-            if Viewport then
-                MainFrame.Position = UDim2.fromOffset(8, 8)
-                MainFrame.Size = UDim2.fromOffset((Viewport.X - 16) / Library.DPIScale, (Viewport.Y - 16) / Library.DPIScale)
-            end
-        end
-    end)
-    local MaxGlyph = New("Frame", {BackgroundTransparency = 1, Position = UDim2.fromOffset(7, 7), Size = UDim2.fromOffset(14, 14), Parent = Maximize})
-    New("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 2, Parent = MaxGlyph})
-    CaptionButton(3, "104723246031864", function() Library:Unload() end)
-    Library:GiveSignal(XPTaskbar.MouseButton1Click:Connect(function()
-        if Fading then return end
-        XPTaskbar.Visible = false
-        local Destination = RestorePosition or MainFrame.Position
-        MainFrame.Position = Destination + UDim2.fromOffset(0, 65)
-        Window:Toggle(true)
-        TweenService:Create(MainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = Destination}):Play()
-    end))
-    function Window:UpdateCaptionTheme()
-        XPControls.Visible = Library.ActiveTheme == "Windows XP"
-        if not XPControls.Visible then XPTaskbar.Visible = false end
-    end
-    Window:UpdateCaptionTheme()
-    local OriginalToggle = Window.Toggle
-    function Window:Toggle(Value)
-        OriginalToggle(self, Value)
-        if Library.Toggled then XPTaskbar.Visible = false end
-    end
-
     function Library:Toggle(Value: boolean?)
         return Window:Toggle(Value)
     end
@@ -14919,13 +14890,15 @@ function Library:CreateWindow(WindowInfo)
         Themes:AddDropdown(Prefix .. "InterfaceFont", {
             Text = "Font",
             Tooltip = "Changes the menu font and saves it with your profile.",
-            Values = { "Arial", "Code", "Gotham", "SourceSans", "RobotoMono", "Roboto", "Ubuntu", "Garamond", "Arcade", "SciFi" },
+            Values = { "Arial", "Code", "Gotham", "SourceSans", "RobotoMono", "Roboto", "Ubuntu", "Garamond", "Arcade", "SciFi", "Fortnite style", "Minecraft style", "Bangers", "Oswald", "FredokaOne", "Cartoon", "PermanentMarker", "RobotoCondensed" },
             Default = "Arial",
             Callback = function(Value)
-                local FontValue = Enum.Font[Value]
+                local FontValue = Enum.Font[Value == "Fortnite style" and "Bangers" or Value == "Minecraft style" and "Arcade" or Value]
                 if FontValue then Library:SetFont(FontValue) end
             end,
         })
+        Themes:AddSlider(Prefix .. "InterfaceFontSize", {Text = "Font size", Default = 100, Min = 75, Max = 125, Rounding = 0, Suffix = "%",
+            Callback = function(Value) Library:SetFontSizeScale(Value / 100) end})
         StudioLayout:AddDropdown(Prefix .. "StudioNotifySide", {
             Text = "Notification Side",
             Values = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" },
