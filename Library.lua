@@ -340,6 +340,7 @@ local Library = {
 
     NotifyOnError = false,
     ShowCustomCursor = true,
+    CursorStay = false, CursorTransparency = 0,
     ForceCheckbox = false,
 
     CantDragForced = false,
@@ -2107,6 +2108,7 @@ end
 function Library:ResetCursorIcon()
     CursorCustomImage.Visible = false
     CursorCustomImage.Size = UDim2.fromOffset(20, 20)
+    Library:UpdateCursorAppearance()
 end
 
 function Library:ChangeCursorIcon(ImageId: string)
@@ -2122,6 +2124,41 @@ function Library:ChangeCursorIcon(ImageId: string)
     CursorCustomImage.Image = Icon.Url
     CursorCustomImage.ImageRectOffset = Icon.ImageRectOffset
     CursorCustomImage.ImageRectSize = Icon.ImageRectSize
+    Library:UpdateCursorAppearance()
+end
+
+--// cursor owns the system icon only while visible
+function Library:UpdateCursorAppearance()
+    local Alpha = math.clamp(tonumber(Library.CursorTransparency) or 0, 0, 1)
+    Cursor.BackgroundTransparency = CursorCustomImage.Visible and 1 or Alpha
+    for _, Object in Cursor:GetDescendants() do
+        if Object:IsA("Frame") then Object.BackgroundTransparency = CursorCustomImage.Visible and 1 or Alpha end
+    end
+    CursorCustomImage.ImageTransparency = Alpha
+end
+
+function Library:UpdateCursor()
+    local Wanted = not Library.Unloaded and not Library.IsMobile and Library.ShowCustomCursor
+        and (Library.Toggled or Library.CursorStay) and ScreenGui and ScreenGui.Parent
+    if not Wanted then
+        RunService:UnbindFromRenderStep(Library.ShowCursorBinding)
+        Cursor.Visible = false
+        if Library.CursorMouseOwned then
+            UserInputService.MouseIconEnabled = Library.CursorPreviousMouseIcon
+            Library.CursorMouseOwned = false
+        end
+        return
+    end
+    if Library.CursorMouseOwned then return end
+    Library.CursorPreviousMouseIcon = UserInputService.MouseIconEnabled
+    Library.CursorMouseOwned = true
+    RunService:BindToRenderStep(Library.ShowCursorBinding, Enum.RenderPriority.Last.Value, function()
+        if Library.Unloaded or not ScreenGui.Parent or not Library.ShowCustomCursor
+            or not (Library.Toggled or Library.CursorStay) then Library:UpdateCursor(); return end
+        UserInputService.MouseIconEnabled = false
+        Cursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y)
+        Cursor.Visible = true
+    end)
 end
 
 function Library:ChangeCursorIconSize(Size: UDim2)
@@ -13863,25 +13900,8 @@ function Library:CreateWindow(WindowInfo)
             ModalElement.Modal = Library.Toggled
         end
 
-        if Library.Toggled and not Library.IsMobile then
-            local OldMouseIconEnabled = UserInputService.MouseIconEnabled
-            local ShowCursorBinding = Library.ShowCursorBinding
-            pcall(function()
-                RunService:UnbindFromRenderStep(ShowCursorBinding)
-            end)
-            RunService:BindToRenderStep(ShowCursorBinding, Enum.RenderPriority.Last.Value, function()
-                UserInputService.MouseIconEnabled = not Library.ShowCustomCursor
-
-                Cursor.Position = UDim2.fromOffset(Mouse.X, Mouse.Y)
-                Cursor.Visible = Library.ShowCustomCursor
-
-                if not (Library.Toggled and ScreenGui and ScreenGui.Parent) then
-                    UserInputService.MouseIconEnabled = OldMouseIconEnabled
-                    Cursor.Visible = false
-                    RunService:UnbindFromRenderStep(ShowCursorBinding)
-                end
-            end)
-        elseif not Library.Toggled then
+        Library:UpdateCursor()
+        if not Library.Toggled then
             TooltipLabel.Visible = false
 
             for _, Option in Library.Options do
@@ -14915,11 +14935,28 @@ function Library:CreateWindow(WindowInfo)
                 if tostring(Value) ~= "" then Library:SetBackgroundImage(Value) end
             end,
         })
+        local CursorSection = InterfaceBox.Tabs.Cursor or InterfaceBox:AddTab("Cursor")
         if not Toggles.Cursor then
-            Interface:AddToggle("Cursor", {
-                Text = "Custom Cursor",
-                Default = Library.ShowCustomCursor,
-                Callback = function(Value) Library.ShowCustomCursor = Value end,
+            CursorSection:AddToggle("Cursor", {
+                Text = "Custom Cursor", Default = Library.ShowCustomCursor,
+                Callback = function(Value) Library.ShowCustomCursor = Value; Library:UpdateCursor() end,
+            })
+            local CursorSettings = CursorSection:AddCollapsible({Text = "settings", Expanded = false, Indent = 18})
+            CursorSettings:AddInput(Prefix .. "CursorImage", {
+                Text = "Cursor asset", Default = "", Finished = true, ClearTextOnFocus = false,
+                Placeholder = "asset id, image URL or icon name",
+                Callback = function(Value)
+                    local Ok = pcall(Library.ChangeCursorIcon, Library, Value)
+                    if not Ok then Library:Notify({Title = "Cursor", Description = "Enter a valid image asset or icon name.", Time = 3}) end
+                end,
+            })
+            CursorSettings:AddSlider(Prefix .. "CursorTransparency", {
+                Text = "Transparency", Min = 0, Max = 1, Default = Library.CursorTransparency, Rounding = 2,
+                Callback = function(Value) Library.CursorTransparency = Value; Library:UpdateCursorAppearance() end,
+            })
+            CursorSettings:AddToggle(Prefix .. "CursorStay", {
+                Text = "stay?", Default = Library.CursorStay,
+                Callback = function(Value) Library.CursorStay = Value; Library:UpdateCursor() end,
             })
         end
         if not Toggles.Watermark and not Toggles.Overlay then
@@ -14991,6 +15028,7 @@ function Library:CreateWindow(WindowInfo)
                 Text = "Menu Key",
                 ChangedCallback = function(Value) Library.ToggleKeybind = Value or Enum.KeyCode.RightShift end,
             })
+            Options[Prefix .. "MenuKey"]:RunChanged()
             Interface:AddButton({ Text = "Unload", Func = function() Library:Unload() end })
         end
         if KeybindWidgetToggle and KeybindWidgetToggle.Holder then
@@ -16694,6 +16732,7 @@ Library:GiveSignal(Teams.ChildRemoved:Connect(OnTeamChange))
 function Library:Unload()
     if Library.Unloaded then return end
     Library.Unloaded = true
+    Library:UpdateCursor()
     local Surface = Library.MainMenuSurface
     local Farewell
     if ScreenGui and ScreenGui.Parent and Surface and Surface.Parent then
