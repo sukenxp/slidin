@@ -1223,7 +1223,7 @@ function Library:RemoveFromRegistry(Instance)
 end
 
 function Library:UpdateColorsUsingRegistry()
-    for Instance, Properties in Library.Registry do
+    for Instance, Properties in table.clone(Library.Registry) do
         for Property, Index in Properties do
             local SchemeValue = GetSchemeValue(Index)
 
@@ -1242,7 +1242,7 @@ function Library:SetDPIScale(DPIScale: number)
         UIScale.Scale = Library.DPIScale - (tonumber(Library.ScalesOffset[UIScale]) or 0)
     end
 
-    for _, Option in Options do
+    for _, Option in table.clone(Options) do
         if Option.Type == "Dropdown" then
             Option:RecalculateListSize()
         end
@@ -1657,7 +1657,7 @@ function Library:SetSchemeColor(Name, Value)
     end
 
     Library.Scheme[Name] = Value
-    for Instance, Properties in Library.Registry do
+    for Instance, Properties in table.clone(Library.Registry) do
         if not Instance.Parent then
             continue
         end
@@ -1737,7 +1737,7 @@ function Library:SetTheme(Name)
     Library:SetGradientColors(Theme.GradientStart, Theme.GradientEnd)
     for _, Toggle in pairs(Toggles) do if Toggle.UpdateColors then Toggle:UpdateColors() end end
 
-    for Instance, Properties in Library.Registry do
+    for Instance, Properties in table.clone(Library.Registry) do
         if not Instance.Parent then
             continue
         end
@@ -6301,7 +6301,7 @@ do
 
             if not Toggle.DefaultCheckImage then Toggle.DefaultCheckImage = CheckImage.Image end
             local XP = Library.ActiveTheme == "Windows XP"
-            CheckImage.Image = XP and "rbxassetid://125604370229248" or Toggle.DefaultCheckImage
+            CheckImage.Image = XP and "rbxassetid://129539300391423" or Toggle.DefaultCheckImage
             CheckImage.ImageRectOffset = not XP and CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero
             CheckImage.ImageRectSize = not XP and CheckIcon and CheckIcon.ImageRectSize or Vector2.zero
             Library.Registry[CheckImage].ImageColor3 = function() return Library.ActiveTheme == "Windows XP" and Color3.new(1, 1, 1) or Library.Scheme.FontColor end
@@ -6564,7 +6564,7 @@ do
             Parent = Ball,
         })
         local XPCheck = New("ImageLabel", {BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-            Image = "rbxassetid://125604370229248", ImageTransparency = 1, Parent = Switch})
+            Image = "rbxassetid://129539300391423", ImageTransparency = 1, Parent = Switch})
         AddAccentGradient(Ball, 0, NumberSequence.new(0.05))
         AddAccentGradient(SwitchStroke, 0, NumberSequence.new(0.18))
 
@@ -10003,7 +10003,7 @@ function Library:ExportProfile()
     for Name, Toggle in pairs(Toggles) do
         Data.toggles[Name] = Toggle.Value
     end
-    for Name, Option in pairs(Options) do
+    for Name, Option in pairs(table.clone(Options)) do
         if Option.Type == "KeyPicker" then
             Data.options[Name] = PackProfileValue({ Option.Value, Option.Mode, Option.Modifiers })
         else
