@@ -15155,6 +15155,53 @@ function Library:CreateWindow(WindowInfo)
         return Tab
     end
 
+    --// optional task priorities: games supply enabled predicates and consume GetOrder()
+    function Window:AddPriorityTab(Info)
+        Info = Info or {}
+        local Tab = Window:AddTab(Info.Name or "Priority", Info.Icon or "list-ordered")
+        local Controls = Tab:AddLeftGroupbox("task priority")
+        Controls:AddLabel("Higher numbers run first. Unavailable tasks are skipped.", true)
+        local Empty = Controls:AddLabel("Enable an auto farm task to set its priority.", true)
+        local Entries = {}
+        function Tab:GetOrder()
+            local Ordered = {}
+            for _, Entry in ipairs(Entries) do
+                if Entry.Item.IsEnabled() then table.insert(Ordered, Entry) end
+            end
+            table.sort(Ordered, function(A,B)
+                if A.Value == B.Value then return A.Index < B.Index end
+                return A.Value > B.Value
+            end)
+            local Ids = {}
+            for _, Entry in ipairs(Ordered) do table.insert(Ids,Entry.Item.Id) end
+            return Ids
+        end
+        function Tab:Refresh()
+            local Count = 0
+            for _, Entry in ipairs(Entries) do
+                local Enabled = Entry.Item.IsEnabled() == true
+                if Entry.Visible ~= Enabled then Entry.Visible = Enabled; Entry.Control:SetVisible(Enabled) end
+                if Enabled then Count += 1 end
+            end
+            Empty:SetVisible(Count == 0)
+        end
+        for Index, Item in ipairs(Info.Items or {}) do
+            assert(type(Item.Id) == "string" and type(Item.IsEnabled) == "function", "priority items need Id and IsEnabled")
+            local Entry = {Item=Item, Index=Index, Value=Item.Default or 1}
+            table.insert(Entries,Entry)
+            Entry.Control = Controls:AddSlider((Info.Prefix or "Priority")..Item.Id, {
+                Text=Item.Text or Item.Id, Min=1, Max=100, Default=Entry.Value, Rounding=0,
+                Callback=function(Value)
+                    local Changed = Entry.Value ~= Value
+                    Entry.Value = Value
+                    if Changed and Info.OnChanged then Info.OnChanged(Tab:GetOrder()) end
+                end,
+            })
+        end
+        Tab:Refresh()
+        return Tab
+    end
+
     function Window:AddNotificationHistoryTab(Info)
         Info = Info or {}
         local Tab = Window:AddContainerlessTab({
