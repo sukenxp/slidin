@@ -15198,7 +15198,7 @@ function Library:CreateWindow(WindowInfo)
                 if Tab:Move(Entry.Item.Id, Current.To) then Entry.Card.Position = UDim2.new(0.5, 0, 0.5, Offset) end
             end
             Entry.Slot.ZIndex = 1
-            Animate(Entry, "Pop", Entry.Scale, {Scale = 1})
+            Animate(Entry, "Pop", Entry.Scale, {Scale = Entry.Hovered and 1.015 or 1})
             Animate(Entry, "Settle", Entry.Card, {Position = UDim2.fromScale(0.5, 0.5), Rotation = 0})
             Animate(Entry, "Glow", Entry.Stroke, {Transparency = 1})
         end
@@ -15272,6 +15272,14 @@ function Library:CreateWindow(WindowInfo)
                 Library:SafeCallback(Info.OnChanged, Tab:GetOrder())
             end
             Options[Key] = Entry
+            table.insert(Tab.Connections, Entry.Card.MouseEnter:Connect(function()
+                Entry.Hovered = true
+                if not Drag or Drag.Entry ~= Entry then Animate(Entry, "Pop", Entry.Scale, {Scale = 1.015}) end
+            end))
+            table.insert(Tab.Connections, Entry.Card.MouseLeave:Connect(function()
+                Entry.Hovered = false
+                if not Drag or Drag.Entry ~= Entry then Animate(Entry, "Pop", Entry.Scale, {Scale = 1}) end
+            end))
             table.insert(Tab.Connections, Entry.Card.InputBegan:Connect(function(Input)
                 if not IsClickInput(Input) or Drag or Library.ActiveTab ~= Tab or not Library.Toggled then return end
                 Tab:Refresh()
@@ -15279,7 +15287,7 @@ function Library:CreateWindow(WindowInfo)
                 if Entry.Settle then Entry.Settle:Cancel() end
                 Drag = {Entry = Entry, Input = Input, StartY = Input.Position.Y,
                     StartTop = Entry.Slot.AbsolutePosition.Y, CanvasY = Content.CanvasPosition.Y,
-                    Scrolling = Content.ScrollingEnabled}
+                    Scrolling = Content.ScrollingEnabled, Phase = 0}
                 Content.ScrollingEnabled = false
                 Entry.Slot.ZIndex = 20
                 Animate(Entry, "Pop", Entry.Scale, {Scale = 1.025})
@@ -15301,8 +15309,10 @@ function Library:CreateWindow(WindowInfo)
             local MaxScroll = math.max(0, Content.AbsoluteCanvasSize.Y - Height)
             Content.CanvasPosition = Vector2.new(0, math.clamp(Content.CanvasPosition.Y + Scroll * dt * 240, 0, MaxScroll))
             local Delta = (Y - Drag.StartY + Content.CanvasPosition.Y - Drag.CanvasY) / Library.DPIScale
-            Entry.Card.Position = UDim2.new(0.5, 0, 0.5, Delta)
-            Entry.Card.Rotation = math.clamp(Delta * 0.015, -2, 2)
+            --// continuous wind sway exists only while a card is held
+            Drag.Phase += dt * 4
+            Entry.Card.Position = UDim2.new(0.5, math.sin(Drag.Phase) * 2.5, 0.5, Delta)
+            Entry.Card.Rotation = math.sin(Drag.Phase * 1.3) * 1.5 + math.clamp(Delta * 0.01, -1, 1)
             local Active = Sorted(true)
             local Center = Drag.StartTop + (Y - Drag.StartY) + Entry.Slot.AbsoluteSize.Y / 2
             local To = 1
