@@ -3666,6 +3666,7 @@ function Library:OnUnload(Callback)
 end
 
 local CheckIcon = Library:GetIcon("check")
+local XPCheckImage = GetURLImage("https://i.postimg.cc/65Q6VK9S/Firefly-(4).png")
 local ArrowIcon = Library:GetIcon("chevron-up")
 local ResizeIcon = Library:GetIcon("move-diagonal-2")
 local KeyIcon = Library:GetIcon("key")
@@ -6338,9 +6339,10 @@ do
 
             if not Toggle.DefaultCheckImage then Toggle.DefaultCheckImage = CheckImage.Image end
             local XP = Library.ActiveTheme == "Windows XP"
-            CheckImage.Image = XP and "rbxassetid://129539300391423" or Toggle.DefaultCheckImage
-            CheckImage.ImageRectOffset = not XP and CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero
-            CheckImage.ImageRectSize = not XP and CheckIcon and CheckIcon.ImageRectSize or Vector2.zero
+            local CustomCheck = XP and XPCheckImage
+            CheckImage.Image = CustomCheck or Toggle.DefaultCheckImage
+            CheckImage.ImageRectOffset = not CustomCheck and CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero
+            CheckImage.ImageRectSize = not CustomCheck and CheckIcon and CheckIcon.ImageRectSize or Vector2.zero
             Library.Registry[CheckImage].ImageColor3 = function() return Library.ActiveTheme == "Windows XP" and Color3.new(1, 1, 1) or Library.Scheme.FontColor end
             CheckImage.ImageColor3 = XP and Color3.new(1, 1, 1) or Library.Scheme.FontColor
             CheckboxStroke.Transparency = Toggle.Disabled and 0.5 or 0
@@ -6601,7 +6603,10 @@ do
             Parent = Ball,
         })
         local XPCheck = New("ImageLabel", {BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-            Image = "rbxassetid://129539300391423", ImageTransparency = 1, Parent = Switch})
+            Image = XPCheckImage or (CheckIcon and CheckIcon.Url or ""),
+            ImageRectOffset = not XPCheckImage and CheckIcon and CheckIcon.ImageRectOffset or Vector2.zero,
+            ImageRectSize = not XPCheckImage and CheckIcon and CheckIcon.ImageRectSize or Vector2.zero,
+            ImageTransparency = 1, Parent = Switch})
         AddAccentGradient(Ball, 0, NumberSequence.new(0.05))
         AddAccentGradient(SwitchStroke, 0, NumberSequence.new(0.18))
 
@@ -15287,7 +15292,7 @@ function Library:CreateWindow(WindowInfo)
                 if Entry.Settle then Entry.Settle:Cancel() end
                 Drag = {Entry = Entry, Input = Input, StartY = Input.Position.Y,
                     StartTop = Entry.Slot.AbsolutePosition.Y, CanvasY = Content.CanvasPosition.Y,
-                    Scrolling = Content.ScrollingEnabled, Phase = 0}
+                    Scrolling = Content.ScrollingEnabled, Phase = 0, LastY = Input.Position.Y}
                 Content.ScrollingEnabled = false
                 Entry.Slot.ZIndex = 20
                 Animate(Entry, "Pop", Entry.Scale, {Scale = 1.025})
@@ -15309,10 +15314,13 @@ function Library:CreateWindow(WindowInfo)
             local MaxScroll = math.max(0, Content.AbsoluteCanvasSize.Y - Height)
             Content.CanvasPosition = Vector2.new(0, math.clamp(Content.CanvasPosition.Y + Scroll * dt * 240, 0, MaxScroll))
             local Delta = (Y - Drag.StartY + Content.CanvasPosition.Y - Drag.CanvasY) / Library.DPIScale
-            --// continuous wind sway exists only while a card is held
-            Drag.Phase += dt * 4
-            Entry.Card.Position = UDim2.new(0.5, math.sin(Drag.Phase) * 2.5, 0.5, Delta)
-            Entry.Card.Rotation = math.sin(Drag.Phase * 1.3) * 1.5 + math.clamp(Delta * 0.01, -1, 1)
+            --// wind follows vertical pointer movement, never the held offset
+            local Motion = (Y - Drag.LastY) / Library.DPIScale
+            Drag.LastY = Y
+            local Strength = math.clamp(math.abs(Motion) / math.max(dt, 1 / 240) / 180, 0, 1)
+            if Strength > 0 then Drag.Phase += dt * 4 else Drag.Phase = 0 end
+            Entry.Card.Position = UDim2.new(0.5, math.sin(Drag.Phase) * 2.5 * Strength, 0.5, Delta)
+            Entry.Card.Rotation = (math.sin(Drag.Phase * 1.3) * 1.5 + math.sign(Motion)) * Strength
             local Active = Sorted(true)
             local Center = Drag.StartTop + (Y - Drag.StartY) + Entry.Slot.AbsoluteSize.Y / 2
             local To = 1
