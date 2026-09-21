@@ -15158,46 +15158,183 @@ function Library:CreateWindow(WindowInfo)
     --// optional task priorities: games supply enabled predicates and consume GetOrder()
     function Window:AddPriorityTab(Info)
         Info = Info or {}
-        local Tab = Window:AddTab(Info.Name or "Priority", Info.Icon or "list-ordered")
-        local Controls = Tab:AddLeftGroupbox("task priority")
-        Controls:AddLabel("Higher numbers run first. Unavailable tasks are skipped.", true)
-        local Empty = Controls:AddLabel("Enable an auto farm task to set its priority.", true)
-        local Entries = {}
-        function Tab:GetOrder()
-            local Ordered = {}
+        local Tab = Window:AddContainerlessTab({
+            Name = Info.Name or "Priority", Icon = Info.Icon or "list-ordered",
+            Header = "priority", ContentSpacing = 10,
+        })
+        local Content, Entries, Drag = Tab.Content, {}, nil
+        Tab.Root.ClipsDescendants = true
+        local function Sorted(EnabledOnly)
+            local Result = {}
             for _, Entry in ipairs(Entries) do
-                if Entry.Item.IsEnabled() then table.insert(Ordered, Entry) end
+                if not EnabledOnly or Entry.Item.IsEnabled() then table.insert(Result, Entry) end
             end
-            table.sort(Ordered, function(A,B)
+            table.sort(Result, function(A, B)
                 if A.Value == B.Value then return A.Index < B.Index end
                 return A.Value > B.Value
             end)
+            return Result
+        end
+        function Tab:GetOrder()
             local Ids = {}
-            for _, Entry in ipairs(Ordered) do table.insert(Ids,Entry.Item.Id) end
+            for _, Entry in ipairs(Sorted(true)) do table.insert(Ids, Entry.Item.Id) end
             return Ids
         end
-        function Tab:Refresh()
-            local Count = 0
-            for _, Entry in ipairs(Entries) do
-                local Enabled = Entry.Item.IsEnabled() == true
-                if Entry.Visible ~= Enabled then Entry.Visible = Enabled; Entry.Control:SetVisible(Enabled) end
-                if Enabled then Count += 1 end
+        local function Animate(Entry, Key, Object, Properties)
+            if Entry[Key] then Entry[Key]:Cancel() end
+            Entry[Key] = TweenService:Create(Object, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), Properties)
+            Entry[Key]:Play()
+        end
+        local function FinishDrag(Commit)
+            if not Drag then return end
+            local Current = Drag
+            Drag = nil
+            Content.ScrollingEnabled = Current.Scrolling
+            for _, Entry in ipairs(Entries) do Entry.Marker.Visible = false end
+            local Entry = Current.Entry
+            local From = table.find(Tab:GetOrder(), Entry.Item.Id)
+            if Commit and Current.To and Library.Toggled and Library.ActiveTab == Tab and Library.IsRobloxFocused and Entry.Item.IsEnabled() then
+                local Offset = Entry.Card.Position.Y.Offset - ((Current.To - (From or Current.To)) * 70)
+                if Tab:Move(Entry.Item.Id, Current.To) then Entry.Card.Position = UDim2.new(0.5, 0, 0.5, Offset) end
             end
-            Empty:SetVisible(Count == 0)
+            Entry.Slot.ZIndex = 1
+            Animate(Entry, "Pop", Entry.Scale, {Scale = 1})
+            Animate(Entry, "Settle", Entry.Card, {Position = UDim2.fromScale(0.5, 0.5), Rotation = 0})
+            Animate(Entry, "Glow", Entry.Stroke, {Transparency = 1})
+        end
+        function Tab:Refresh()
+            if Tab.Destroyed then return end
+            local Rank = 0
+            for Index, Entry in ipairs(Sorted(false)) do
+                local Enabled = Entry.Item.IsEnabled() == true
+                if Drag and Entry.Visible ~= Enabled then FinishDrag(false) end
+                Entry.Visible, Entry.Slot.Visible = Enabled, Enabled
+                Entry.Slot.LayoutOrder = Index
+                if Enabled then Rank += 1; Entry.Badge.Text = tostring(Rank) end
+            end
+        end
+        --// reorder enabled cards while retaining disabled tasks' positions
+        function Tab:Move(Id, Position)
+            if Tab.Destroyed then return false end
+            local Active, All = Sorted(true), Sorted(false)
+            local From
+            for Index, Entry in ipairs(Active) do if Entry.Item.Id == Id then From = Index; break end end
+            Position = tonumber(Position)
+            if not From or not Position or Position ~= Position then return false end
+            Position = math.clamp(math.floor(Position), 1, #Active)
+            if From == Position then return false end
+            table.insert(Active, Position, table.remove(Active, From))
+            local Next = 1
+            for Index, Entry in ipairs(All) do
+                if Entry.Item.IsEnabled() then All[Index] = Active[Next]; Next += 1 end
+            end
+            for Index, Entry in ipairs(All) do Entry.Value = #All - Index + 1 end
+            Tab:Refresh()
+            Library:SafeCallback(Info.OnChanged, Tab:GetOrder())
+            return true
         end
         for Index, Item in ipairs(Info.Items or {}) do
             assert(type(Item.Id) == "string" and type(Item.IsEnabled) == "function", "priority items need Id and IsEnabled")
-            local Entry = {Item=Item, Index=Index, Value=Item.Default or 1}
-            table.insert(Entries,Entry)
-            Entry.Control = Controls:AddSlider((Info.Prefix or "Priority")..Item.Id, {
-                Text=Item.Text or Item.Id, Min=1, Max=100, Default=Entry.Value, Rounding=0,
-                Callback=function(Value)
-                    local Changed = Entry.Value ~= Value
-                    Entry.Value = Value
-                    if Changed and Info.OnChanged then Info.OnChanged(Tab:GetOrder()) end
-                end,
-            })
+            local Entry = {Item = Item, Index = Index, Value = Item.Default or 1, Type = "Priority"}
+            table.insert(Entries, Entry)
+            Entry.Slot = New("Frame", {Name = Item.Id, BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 60), ZIndex = 1, Parent = Content})
+            Entry.Card = New("TextButton", {Text = "", AutoButtonColor = false,
+                BackgroundColor3 = "MainColor", BackgroundTransparency = 0.04,
+                AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+                Size = UDim2.new(1, -14, 1, -6), Parent = Entry.Slot})
+            table.insert(Library.Corners, New("UICorner", {CornerRadius = UDim.new(0, 6), Parent = Entry.Card}))
+            Library:AddOutline(Entry.Card)
+            Entry.Scale = New("UIScale", {Scale = 1, Parent = Entry.Card})
+            Entry.Stroke = New("UIStroke", {Color = "AccentColor", Thickness = 2, Transparency = 1, Parent = Entry.Card})
+            Entry.Marker = New("Frame", {BackgroundColor3 = "AccentColor", Size = UDim2.new(1, -14, 0, 3),
+                Position = UDim2.fromOffset(7, -4), Visible = false, Parent = Entry.Slot})
+            Entry.Badge = New("TextLabel", {BackgroundColor3 = "BackgroundColor", TextColor3 = "AccentColor",
+                Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(34, 34), TextSize = 16, Text = "", Parent = Entry.Card})
+            table.insert(Library.Corners, New("UICorner", {CornerRadius = UDim.new(0, 6), Parent = Entry.Badge}))
+            New("TextLabel", {BackgroundTransparency = 1, Position = UDim2.fromOffset(56, 0),
+                Size = UDim2.new(1, -100, 1, 0), Text = Item.Text or Item.Id, TextSize = 14,
+                TextXAlignment = Enum.TextXAlignment.Left, Parent = Entry.Card})
+            --// asset-independent six-dot grip
+            for Row = 0, 2 do for Column = 0, 1 do
+                New("Frame", {BackgroundColor3 = "FontColor", BackgroundTransparency = 0.45,
+                    Position = UDim2.new(1, -26 + Column * 7, 0.5, -8 + Row * 7),
+                    Size = UDim2.fromOffset(3, 3), Parent = Entry.Card})
+            end end
+            --// preserve existing numeric profile keys without visible sliders
+            local Key = (Info.Prefix or "Priority") .. Item.Id
+            function Entry:SetValue(Value)
+                Value = tonumber(Value)
+                if Tab.Destroyed or not Value or Value ~= Value or math.abs(Value) == math.huge or self.Value == Value then return end
+                FinishDrag(false)
+                self.Value = Value
+                Tab:Refresh()
+                Library:SafeCallback(Info.OnChanged, Tab:GetOrder())
+            end
+            Options[Key] = Entry
+            table.insert(Tab.Connections, Entry.Card.InputBegan:Connect(function(Input)
+                if not IsClickInput(Input) or Drag or Library.ActiveTab ~= Tab or not Library.Toggled then return end
+                Tab:Refresh()
+                if not Entry.Visible then return end
+                if Entry.Settle then Entry.Settle:Cancel() end
+                Drag = {Entry = Entry, Input = Input, StartY = Input.Position.Y,
+                    StartTop = Entry.Slot.AbsolutePosition.Y, CanvasY = Content.CanvasPosition.Y,
+                    Scrolling = Content.ScrollingEnabled}
+                Content.ScrollingEnabled = false
+                Entry.Slot.ZIndex = 20
+                Animate(Entry, "Pop", Entry.Scale, {Scale = 1.025})
+                Animate(Entry, "Glow", Entry.Stroke, {Transparency = 0.08})
+            end))
         end
+        table.insert(Tab.Connections, RunService.RenderStepped:Connect(function(dt)
+            if not Drag then return end
+            if Tab.Destroyed or Library.Unloaded or not Library.Toggled or Library.ActiveTab ~= Tab
+                or not Library.IsRobloxFocused or not Drag.Entry.Item.IsEnabled() then FinishDrag(false); return end
+            Tab:Refresh()
+            if not Drag then return end
+            local Input, Entry = Drag.Input, Drag.Entry
+            if Input.UserInputState == Enum.UserInputState.End then FinishDrag(true); return end
+            if Input.UserInputState == Enum.UserInputState.Cancel then FinishDrag(false); return end
+            local Y = Input.UserInputType == Enum.UserInputType.Touch and Input.Position.Y or UserInputService:GetMouseLocation().Y
+            local Top, Height = Content.AbsolutePosition.Y, Content.AbsoluteSize.Y
+            local Scroll = Y < Top + 24 and -1 or Y > Top + Height - 24 and 1 or 0
+            local MaxScroll = math.max(0, Content.AbsoluteCanvasSize.Y - Height)
+            Content.CanvasPosition = Vector2.new(0, math.clamp(Content.CanvasPosition.Y + Scroll * dt * 240, 0, MaxScroll))
+            local Delta = (Y - Drag.StartY + Content.CanvasPosition.Y - Drag.CanvasY) / Library.DPIScale
+            Entry.Card.Position = UDim2.new(0.5, 0, 0.5, Delta)
+            Entry.Card.Rotation = math.clamp(Delta * 0.015, -2, 2)
+            local Active = Sorted(true)
+            local Center = Drag.StartTop + (Y - Drag.StartY) + Entry.Slot.AbsoluteSize.Y / 2
+            local To = 1
+            for _, Other in ipairs(Active) do
+                Other.Marker.Visible = false
+                if Other ~= Entry and Center > Other.Slot.AbsolutePosition.Y + Other.Slot.AbsoluteSize.Y / 2 then To += 1 end
+            end
+            Drag.To = To
+            local Destination = Active[To]
+            if Destination then
+                Destination.Marker.Position = UDim2.new(0, 7, To > table.find(Active, Entry) and 1 or 0, To > table.find(Active, Entry) and 1 or -4)
+                Destination.Marker.Visible = true
+            end
+        end))
+        table.insert(Tab.Connections, UserInputService.InputEnded:Connect(function(Input)
+            if Drag and (Input == Drag.Input or Input.UserInputType == Enum.UserInputType.MouseButton1
+                and Drag.Input.UserInputType == Enum.UserInputType.MouseButton1) then FinishDrag(true) end
+        end))
+        table.insert(Tab.Connections, UserInputService.InputBegan:Connect(function(Input)
+            if Input.KeyCode == Enum.KeyCode.Escape then FinishDrag(false) end
+        end))
+        local Destroy = Tab.Destroy
+        function Tab:Destroy()
+            FinishDrag(false)
+            for _, Entry in ipairs(Entries) do
+                local Key = (Info.Prefix or "Priority") .. Entry.Item.Id
+                if Options[Key] == Entry then Options[Key] = nil end
+                for _, Name in ipairs({"Pop", "Settle", "Glow"}) do if Entry[Name] then Entry[Name]:Cancel() end end
+            end
+            Destroy(self)
+        end
+        Library:OnUnload(function() if not Tab.Destroyed then Tab:Destroy() end end)
         Tab:Refresh()
         return Tab
     end
