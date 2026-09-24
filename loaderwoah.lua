@@ -23,6 +23,7 @@ local function detect(placeid, gameid)
 end
 
 if not game:IsLoaded() then game.Loaded:Wait() end
+local route = detect(game.PlaceId, game.GameId)
 
 
 local function createBundledLibrary()
@@ -17183,6 +17184,7 @@ end
 if environment.hitechyloader then
     pcall(function() environment.hitechyloader:Unload() end)
 end
+if not route then return end
 local library = createBundledLibrary()
 environment.hitechyloader = library
 local active = true
@@ -17194,88 +17196,50 @@ end)
 
 
 
-local window = library:CreateWindow({Title = "hitechy", Footer = "game loader", Icon = library:GetBrandIcon(),
-    Size = UDim2.fromOffset(560, 330), Resizable = false, AutoShow = false,
-    BuiltInSettings = false, BuiltInPlayerList = false, BuiltInNotificationHistory = false})
-local tab = window:AddTab("loader", "download")
-local gamebox = tab:AddLeftTabbox("detection"):AddTab("current place")
-local actions = tab:AddRightTabbox("actions"):AddTab("load")
-local gameLabel = gamebox:AddLabel("Detecting game...")
-local placeLabel = gamebox:AddLabel("Place ID: " .. tostring(game.PlaceId))
-local universeLabel = gamebox:AddLabel("Universe ID: " .. tostring(game.GameId))
-local statusLabel = actions:AddLabel("Status: ready")
-local running, loaded = false, false
+local requestedplace = game.PlaceId
+local loading = library:CreateLoading({Title = "hitechy", Icon = library:GetBrandIcon(),
+    LoadingIcon = "loader-circle", TotalSteps = 3, ShowSidebar = false})
+local started = os.clock()
+loading:SetMessage(route.name)
+loading:SetDescription("downloading game script")
+loading:SetCurrentStep(1)
 
-local function refresh()
-    local route, location = detect(game.PlaceId, game.GameId)
-    gameLabel:SetText(route and (route.name .. " (" .. location .. ")") or "Unsupported game")
-    placeLabel:SetText("Place ID: " .. tostring(game.PlaceId))
-    universeLabel:SetText("Universe ID: " .. tostring(game.GameId))
-    return route
-end
-
-local function loadgame()
-    if not active or running or loaded then return end
-    local route = refresh()
-    if not route then
-        statusLabel:SetText("Status: no script for this place")
-        library:Notify({Title = "hitechy loader", Description = "This place is not supported.", Time = 5})
-        return
-    end
-
-    running = true
-    local requestedplace = game.PlaceId
-    statusLabel:SetText("Status: downloading " .. route.name)
-    local loading = library:CreateLoading({Title = "hitechy", Icon = library:GetBrandIcon(),
-        LoadingIcon = "loader-circle", TotalSteps = 3, ShowSidebar = false})
-    loading:SetMessage(route.name)
-    loading:SetDescription("downloading game script")
-    loading:SetCurrentStep(1)
-
-    local ok, scriptSource = pcall(game.HttpGet, game, route.url, true)
-    if not active then return end
-    local failure
-    if not ok or type(scriptSource) ~= "string" or #scriptSource == 0 then
-        failure = "The game script could not be downloaded."
+local ok, scriptSource = pcall(game.HttpGet, game, route.url, true)
+if not active then return end
+local failure
+local execute
+if not ok or type(scriptSource) ~= "string" or #scriptSource == 0 then
+    failure = "The game script could not be downloaded."
+else
+    loading:SetDescription("preparing game script")
+    loading:SetCurrentStep(2)
+    local compiledOK, compiled, compileError = pcall(loadstring, scriptSource, route.name)
+    if not compiledOK or not compiled then
+        failure = "The game script could not be compiled: " .. tostring(compiledOK and compileError or compiled)
     else
-        loading:SetDescription("preparing game script")
-        loading:SetCurrentStep(2)
-        local execute, compileError = loadstring(scriptSource, route.name)
-        if not execute then
-            failure = "The game script could not be compiled: " .. tostring(compileError)
-        else
-
-            if game.PlaceId ~= requestedplace or detect(game.PlaceId, game.GameId) ~= route then
-                failure = "The place changed while loading. Run the loader again."
-            else
-                loading:SetDescription("starting " .. route.name)
-                loading:SetCurrentStep(3)
-                local started, runtimeError = pcall(execute)
-                if not started then failure = "The game script failed: " .. tostring(runtimeError) end
-            end
-        end
+        execute = compiled
     end
-
-    if failure then
-        statusLabel:SetText("Status: failed; retry is available")
-        warn("[hitechy loader] " .. failure)
-        library:Notify({Title = "hitechy loader", Description = failure, Time = 7})
-        running = false
-        loading:Continue()
-        return
-    end
-
-    loaded = true
-    statusLabel:SetText("Status: loaded " .. route.name)
-    loading:Continue()
-    library:Unload()
 end
 
-actions:AddButton({Text = "load detected game", Func = function() task.spawn(loadgame) end})
-actions:AddButton({Text = "refresh detection", Func = refresh})
-refresh()
-window:Toggle(true)
+if not failure and (game.PlaceId ~= requestedplace or detect(game.PlaceId, game.GameId) ~= route) then
+    failure = "The place changed while loading. Run the loader again."
+end
+if failure then
+    loading:SetDescription("could not load game script")
+else
+    loading:SetDescription("starting " .. route.name)
+    loading:SetCurrentStep(3)
+end
+task.wait(math.max(0, 1.5 - (os.clock() - started)))
+if not active then return end
+if not failure and (game.PlaceId ~= requestedplace or detect(game.PlaceId, game.GameId) ~= route) then
+    failure = "The place changed while loading. Run the loader again."
+end
+if failure then warn("[hitechy loader] " .. failure) end
+library:Unload()
+if failure then return end
 
-
-
-if detect(game.PlaceId, game.GameId) then task.spawn(loadgame) end
+task.spawn(function()
+    local launched, runtimeError = pcall(execute)
+    if not launched then warn("[hitechy loader] The game script failed: " .. tostring(runtimeError)) end
+end)
